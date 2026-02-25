@@ -4,5 +4,6 @@ numpy
 matplotlib
 python-docx
 plotly
-kaleido==0.1.0post1
+kaleido==0.2.1
+
 
