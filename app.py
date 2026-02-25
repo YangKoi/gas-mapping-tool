@@ -7,6 +7,7 @@ import io
 from docx import Document
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+import matplotlib.colors as mcolors
 
 st.set_page_config(page_title="Riken Viet - Auto Gas Mapping", layout="wide")
 st.title("🛡️ Hệ thống Tự động Thiết kế Vùng phủ Khí (>80%)")
@@ -24,14 +25,15 @@ with col1:
     room_y = st.number_input("Chiều rộng (Y) - mét", min_value=1.0, value=10.0, step=1.0)
     room_z = st.number_input("Chiều cao trần (Z)", min_value=1.0, value=5.0)
 
-    # Vẽ lưới không gian trống để xem tọa độ
+    # Vẽ lưới không gian trống
     fig_grid, ax_grid = plt.subplots(figsize=(6, 4))
     ax_grid.set_xlim(0, room_x)
     ax_grid.set_ylim(0, room_y)
     ax_grid.set_xticks(np.arange(0, room_x + 1, max(1, int(room_x/10))))
     ax_grid.set_yticks(np.arange(0, room_y + 1, max(1, int(room_y/10))))
-    ax_grid.grid(True, linestyle='--', color='gray', alpha=0.7)
-    ax_grid.set_title("Lưới tọa độ (Dùng để xác định vị trí Vật cản)")
+    ax_grid.grid(True, linestyle='--', color='gray', alpha=0.5)
+    ax_grid.set_title("Lưới tọa độ (Tham khảo để đặt vật cản)")
+    ax_grid.set_aspect('equal')
     st.pyplot(fig_grid)
 
 with col2:
@@ -57,7 +59,8 @@ with col2:
             
             new_dets = []
             count = 1
-            colors = ["Cyan", "Magenta", "Yellow", "Green"]
+            # Danh sách màu sắc hợp lệ trong matplotlib
+            colors = ["cyan", "magenta", "yellow", "lime", "red", "blue", "orange"]
             for x in x_steps:
                 for y in y_steps:
                     new_dets.append({
@@ -66,21 +69,20 @@ with col2:
                         "Y": round(y, 1),
                         "Z": 2.0,
                         "Radius": radius_input,
-                        "Color": colors[count % 4]
+                        "Color": colors[count % len(colors)]
                     })
                     count += 1
             
             st.session_state.det_data = pd.DataFrame(new_dets)
             st.success(f"Đã tự động rải {count-1} đầu dò!")
 
-    st.write("📋 **Bảng Tọa độ Đầu dò (Kiểm tra và tinh chỉnh tay nếu trùng vật cản):**")
+    st.write("📋 **Bảng Tọa độ Đầu dò (Kiểm tra và tinh chỉnh tay):**")
     edited_dets = st.data_editor(st.session_state.det_data, num_rows="dynamic", use_container_width=True)
 
 
-# --- 2. CÁC HÀM XỬ LÝ LÕI (HOÀN CHỈNH) ---
+# --- 2. CÁC HÀM XỬ LÝ LÕI (ĐÃ NÂNG CẤP HÀM VẼ 2D) ---
 
 def check_collision(df_dets, df_obs):
-    """Kiểm tra xem có đầu dò nào bị đặt xuyên vào bên trong bồn chứa không"""
     collisions = []
     if df_obs.empty or df_dets.empty: return collisions
     for _, det in df_dets.iterrows():
@@ -126,21 +128,40 @@ def generate_2d_plot(rx, ry, df_obs, df_dets):
     diem_kha_dung = xx.size - np.sum(khong_gian_trong_bon)
     ty_le = (np.sum(tong_vung_phu) / diem_kha_dung) * 100 if diem_kha_dung > 0 else 0
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.contourf(xx, yy, tong_vung_phu, levels=[0.5, 1], colors=['#A8E6CF'], alpha=0.7)
-    ax.plot([0, rx, rx, 0, 0], [0, 0, ry, ry, 0], 'k-', lw=2)
+    # --- VẼ HÌNH ---
+    fig, ax = plt.subplots(figsize=(10, 6))
     
-    if bon_chua:
-        ax.add_patch(plt.Circle((bon_chua['x'], bon_chua['y']), bon_chua['r'], color='gray', zorder=5))
+    # Lớp 1: Vùng phủ tổng hợp (Màu nền xanh)
+    ax.contourf(xx, yy, tong_vung_phu, levels=[0.5, 1], colors=['#A8E6CF'], alpha=0.6, zorder=1)
     
+    # Lớp 2: Tường bao
+    ax.plot([0, rx, rx, 0, 0], [0, 0, ry, ry, 0], 'k-', lw=2, zorder=2)
+    
+    # Lớp 3: Vẽ các đầu dò và vòng tròn bao phủ lý thuyết (Nét đứt)
+    valid_colors = mcolors.CSS4_COLORS # Lấy danh sách màu hợp lệ của matplotlib
     for _, det in df_dets.iterrows():
-        ax.plot(det['X'], det['Y'], '^', color='blue', markersize=10) 
+        d_color = det['Color'].lower()
+        # Kiểm tra nếu màu nhập vào không hợp lệ thì chuyển về màu xanh dương mặc định
+        use_color = d_color if d_color in valid_colors else 'blue'
+        
+        # Vẽ vòng tròn nét đứt thể hiện phạm vi lý thuyết
+        circle = plt.Circle((det['X'], det['Y']), det['Radius'], 
+                            color=use_color, fill=False, linestyle='--', linewidth=1.5, alpha=0.8, zorder=3)
+        ax.add_patch(circle)
+        
+        # Vẽ tâm đầu dò (Hình tam giác)
+        ax.plot(det['X'], det['Y'], '^', color=use_color, markersize=12, markeredgecolor='black', zorder=5)
 
-    ax.set_title(f"2D Gas Mapping - Coverage: {ty_le:.1f}%", fontweight='bold')
-    ax.set_xlabel("X (m)")
-    ax.set_ylabel("Y (m)")
+    # Lớp 4: Vẽ bồn chứa (Vật cản) - Đặt zorder cao hơn để che các vòng tròn nét đứt
+    if bon_chua:
+        tank = plt.Circle((bon_chua['x'], bon_chua['y']), bon_chua['r'], color='gray', alpha=0.9, zorder=4, label='Vật cản')
+        ax.add_patch(tank)
+
+    ax.set_title(f"Bản đồ Vùng phủ 2D (Hiển thị phạm vi lý thuyết & Thực tế)\nTỷ lệ an toàn đạt: {ty_le:.1f}%", fontweight='bold', fontsize=12)
+    ax.set_xlabel("Chiều dài X (m)")
+    ax.set_ylabel("Chiều rộng Y (m)")
     ax.axis('equal')
-    ax.grid(True, linestyle=':', alpha=0.5)
+    ax.grid(True, linestyle=':', alpha=0.5, zorder=0)
     
     return fig, ty_le
 
@@ -154,12 +175,13 @@ def generate_word_report(fig, ty_le, rx, ry):
     doc.add_paragraph(f'Khu vực giám sát có kích thước: {rx}m x {ry}m. Hệ thống được thiết kế theo phương pháp mô phỏng tối ưu hóa điểm mù.')
     
     doc.add_heading('2. Kết quả Mô phỏng 2D', level=1)
+    doc.add_paragraph('Hình ảnh dưới đây thể hiện các vòng tròn bao phủ lý thuyết (nét đứt) và vùng phủ thực tế sau khi tính toán hiệu ứng bóng mờ do vật cản (vùng màu xanh).')
     img_stream = io.BytesIO()
     fig.savefig(img_stream, format='png', bbox_inches='tight', dpi=150)
     img_stream.seek(0)
     
     doc.add_picture(img_stream, width=Inches(6.0))
-    doc.add_paragraph(f'Hình 1: Bản đồ nhiệt mô phỏng vùng phủ giao thoa. Tỷ lệ an toàn đạt: {ty_le:.1f}%').alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f'Hình 1: Bản đồ nhiệt mô phỏng. Tỷ lệ an toàn đạt: {ty_le:.1f}%').alignment = WD_ALIGN_PARAGRAPH.CENTER
     
     doc_stream = io.BytesIO()
     doc.save(doc_stream)
@@ -179,10 +201,13 @@ def generate_scad(rx, ry, rz, df_obs, df_dets):
         scad += f'    color("DimGray", 1.0) translate([{row["X"]}, {row["Y"]}, 0]) cylinder(r={row["Radius"]}, h={row["Height"]});\n'
     scad += "}\nroom_frame();\nintersection() {\n"
     scad += f"    cube([{rx}, {ry}, {rz}]);\n    union() {{\n        obstacles();\n\n"
+    valid_colors = mcolors.CSS4_COLORS
     for _, row in df_dets.iterrows():
+        d_color = row["Color"].lower()
+        use_color = d_color if d_color in valid_colors else 'red'
         scad += f'        // {row["ID"]}\n'
-        scad += f'        color("Red") translate([{row["X"]}, {row["Y"]}, {row["Z"]}]) sphere(r=0.2);\n'
-        scad += f'        color("{row["Color"]}", 0.3) difference() {{\n'
+        scad += f'        color("{use_color}") translate([{row["X"]}, {row["Y"]}, {row["Z"]}]) sphere(r=0.2);\n'
+        scad += f'        color("{use_color}", 0.3) difference() {{\n'
         scad += f'            translate([{row["X"]}, {row["Y"]}, {row["Z"]}]) sphere(r={row["Radius"]});\n'
         scad += f'            obstacles();\n        }}\n'
     scad += "    }\n}\n"
@@ -191,37 +216,36 @@ def generate_scad(rx, ry, rz, df_obs, df_dets):
 
 # --- 3. KIỂM TRA & XUẤT KẾT QUẢ TỔNG HỢP ---
 st.markdown("---")
-if st.button("📊 Xuất Báo cáo & Lập Bản đồ Bóng mờ (Shadowing)", use_container_width=True):
+if st.button("📊 Xuất Báo cáo & Lập Bản đồ Bóng mờ (Shadowing)", use_container_width=True, type='primary'):
     if edited_dets.empty:
         st.warning("⚠️ Vui lòng bấm 'Tự động bố trí' hoặc nhập tay ít nhất 1 đầu dò vào bảng!")
     else:
-        # 1. Kích hoạt Cảnh báo Va chạm
         collided_dets = check_collision(edited_dets, edited_obs)
         
         if collided_dets:
-            # Nếu thuật toán rải đầu dò vô tình đặt trúng bồn chứa -> Báo đỏ và dừng lại
-            st.error(f"⛔ CẢNH BÁO VA CHẠM VẬT LÝ: Đầu dò **{', '.join(collided_dets)}** đang bị đặt xuyên vào bên trong bồn chứa! Vui lòng chỉnh lại tọa độ X, Y trên bảng.")
+            st.error(f"⛔ CẢNH BÁO VA CHẠM: Đầu dò **{', '.join(collided_dets)}** đang bị đặt trùng vị trí với vật cản! Vui lòng chỉnh lại tọa độ trên bảng.")
         else:
-            # Nếu an toàn -> Chạy render 2D và tạo file
-            with st.spinner('Đang tính toán ma trận bóng mờ và kết xuất tài liệu...'):
-                
-                # Render Plot 2D hiển thị lên Web
+            with st.spinner('Đang tính toán và kết xuất tài liệu...'):
+                # Render Plot 2D
                 fig, coverage_percent = generate_2d_plot(room_x, room_y, edited_obs, edited_dets)
                 st.pyplot(fig)
                 
-                # Render File Word & File SCAD ngầm trong RAM
+                # Render Files
                 word_stream = generate_word_report(fig, coverage_percent, room_x, room_y)
                 scad_code = generate_scad(room_x, room_y, room_z, edited_obs, edited_dets)
                 
-                st.success(f"✅ Đã kết xuất thành công! Tỷ lệ bao phủ an toàn đạt: {coverage_percent:.1f}%")
+                if coverage_percent >= 80:
+                    st.success(f"✅ TUYỆT VỜI! Tỷ lệ bao phủ đạt chuẩn an toàn: {coverage_percent:.1f}% (Mục tiêu >80%)")
+                else:
+                    st.warning(f"⚠️ Cảnh báo: Tỷ lệ bao phủ chỉ đạt {coverage_percent:.1f}%. Cần bổ sung đầu dò hoặc điều chỉnh vị trí để đạt mục tiêu >80%.")
                 
-                # Hiển thị 2 nút Tải file cạnh nhau
+                # Nút tải file
                 col_d1, col_d2 = st.columns(2)
                 with col_d1:
                     st.download_button(
                         label="📄 Tải Báo cáo Kỹ thuật (Word .docx)", 
                         data=word_stream, 
-                        file_name="Bao_Cao_GasMapping.docx", 
+                        file_name="Bao_Cao_GasMapping_RikenViet.docx", 
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         type="primary"
                     )
