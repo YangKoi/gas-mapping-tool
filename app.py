@@ -24,7 +24,6 @@ col1, col2 = st.columns([1, 1.2])
 with col1:
     st.header("1. Không gian & Đặc tính Khí")
     
-    st.subheader("🧪 Thông số Khí mục tiêu")
     gas_type = st.selectbox(
         "Loại khí cần giám sát:", 
         [
@@ -34,7 +33,6 @@ with col1:
         ]
     )
     
-    st.subheader("📏 Kích thước khu vực (m)")
     room_x = st.number_input("Chiều dài (X)", min_value=1.0, value=15.0, step=1.0)
     room_y = st.number_input("Chiều rộng (Y)", min_value=1.0, value=10.0, step=1.0)
     room_z = st.number_input("Chiều cao trần (Z)", min_value=1.0, value=5.0)
@@ -44,7 +42,7 @@ with col1:
     else: recommended_z = 1.5
     st.info(f"💡 Cao độ Z tối ưu đề xuất: {recommended_z}m")
 
-    # PHỤC HỒI: VẼ LƯỚI TỌA ĐỘ ĐỂ NHẬP LIỆU
+    # VẼ LƯỚI TỌA ĐỘ
     fig_grid, ax_grid = plt.subplots(figsize=(6, 4))
     ax_grid.set_xlim(0, room_x)
     ax_grid.set_ylim(0, room_y)
@@ -88,7 +86,6 @@ with col2:
 
     st.write("📋 **Bảng Tọa độ Đầu dò:**")
     edited_dets = st.data_editor(st.session_state.det_data, num_rows="dynamic", use_container_width=True)
-
 
 # ==========================================
 # 2. CÁC HÀM XỬ LÝ LÕI
@@ -157,29 +154,41 @@ def generate_2d_plot(rx, ry, df_obs, df_dets):
 
 def generate_plotly_3d(rx, ry, rz, df_obs, df_dets):
     fig = go.Figure()
-    # Khung phòng
+    # Khung phòng (Màu trắng để nổi trên nền tối)
     x_lines = [0, rx, rx, 0, 0, 0, rx, rx, 0, 0, None, rx, rx, None, rx, rx, None, 0, 0]
     y_lines = [0, 0, ry, ry, 0, 0, 0, ry, ry, 0, None, 0, 0, None, ry, ry, None, ry, ry]
     z_lines = [0, 0, 0, 0, 0, rz, rz, rz, rz, rz, None, 0, rz, None, 0, rz, None, 0, rz]
-    fig.add_trace(go.Scatter3d(x=x_lines, y=y_lines, z=z_lines, mode='lines', line=dict(color='black', width=3), name='Tường'))
+    fig.add_trace(go.Scatter3d(x=x_lines, y=y_lines, z=z_lines, mode='lines', line=dict(color='white', width=3), name='Tường nhà kho'))
 
     def get_sphere(x0, y0, z0, r):
         u, v = np.mgrid[0:2*np.pi:20j, 0:np.pi:10j]
         return r * np.cos(u) * np.sin(v) + x0, r * np.sin(u) * np.sin(v) + y0, r * np.cos(v) + z0
 
     for _, det in df_dets.iterrows():
-        fig.add_trace(go.Scatter3d(x=[det['X']], y=[det['Y']], z=[det['Z']], mode='markers', marker=dict(size=6, color='black'), name=det['ID']))
+        # ĐẦU DÒ MÀU TRẮNG
+        fig.add_trace(go.Scatter3d(x=[det['X']], y=[det['Y']], z=[det['Z']], mode='markers', marker=dict(size=8, color='white'), name=det['ID']))
         x_sph, y_sph, z_sph = get_sphere(det['X'], det['Y'], det['Z'], det['Radius'])
-        fig.add_trace(go.Surface(x=x_sph, y=y_sph, z=z_sph, opacity=0.15, showscale=False, colorscale=[[0, det['Color']], [1, det['Color']]]))
+        fig.add_trace(go.Surface(x=x_sph, y=y_sph, z=z_sph, opacity=0.15, showscale=False, colorscale=[[0, det['Color']], [1, det['Color']]], name=f"Vùng phủ {det['ID']}"))
 
     for _, obs in df_obs.iterrows():
         z_grid, theta = np.mgrid[0:obs['Height']:2j, 0:2*np.pi:20j]
-        fig.add_trace(go.Surface(x=obs['Radius'] * np.cos(theta) + obs['X'], y=obs['Radius'] * np.sin(theta) + obs['Y'], z=z_grid, opacity=1.0, showscale=False, colorscale='Greys'))
+        fig.add_trace(go.Surface(x=obs['Radius'] * np.cos(theta) + obs['X'], y=obs['Radius'] * np.sin(theta) + obs['Y'], z=z_grid, opacity=1.0, showscale=False, colorscale='Greys', name="Vật cản"))
 
-    fig.update_layout(scene=dict(xaxis=dict(range=[0, rx]), yaxis=dict(range=[0, ry]), zaxis=dict(range=[0, max(rz, 5)]), aspectmode='data'), margin=dict(l=0, r=0, b=0, t=30))
+    # CẤU HÌNH GIAO DIỆN NỀN TỐI (DARK MODE)
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(range=[0, rx], title='X (m)', backgroundcolor="rgb(30, 30, 30)", gridcolor="gray", showbackground=True, zerolinecolor="gray"),
+            yaxis=dict(range=[0, ry], title='Y (m)', backgroundcolor="rgb(30, 30, 30)", gridcolor="gray", showbackground=True, zerolinecolor="gray"),
+            zaxis=dict(range=[0, max(rz, 5)], title='Z (m)', backgroundcolor="rgb(30, 30, 30)", gridcolor="gray", showbackground=True, zerolinecolor="gray"),
+            aspectmode='data'
+        ),
+        paper_bgcolor="rgb(15, 15, 15)",
+        plot_bgcolor="rgb(15, 15, 15)",
+        margin=dict(l=0, r=0, b=0, t=30),
+        legend=dict(font=dict(color='white'))
+    )
     return fig
 
-# CẬP NHẬT: THÊM ẢNH 3D VÀO WORD
 def generate_word_report(fig_2d, img_3d_bytes, ty_le, rx, ry):
     doc = Document()
     doc.add_heading('BÁO CÁO ĐÁNH GIÁ VÙNG PHỦ HỆ THỐNG ĐO KHÍ', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -189,7 +198,6 @@ def generate_word_report(fig_2d, img_3d_bytes, ty_le, rx, ry):
     doc.add_heading('1. Thông số thiết kế', level=1)
     doc.add_paragraph(f'Khu vực giám sát có kích thước: {rx}m x {ry}m. Tỷ lệ an toàn đạt: {ty_le:.1f}%.')
     
-    # Chèn ảnh 2D
     doc.add_heading('2. Kết quả Mô phỏng 2D (Mặt bằng)', level=1)
     img_2d_stream = io.BytesIO()
     fig_2d.savefig(img_2d_stream, format='png', bbox_inches='tight', dpi=150)
@@ -197,11 +205,12 @@ def generate_word_report(fig_2d, img_3d_bytes, ty_le, rx, ry):
     doc.add_picture(img_2d_stream, width=Inches(6.0))
     doc.add_paragraph('Hình 1: Bản đồ vùng phủ giao thoa và hiệu ứng bóng mờ.').alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # Chèn ảnh 3D
     doc.add_heading('3. Phân bổ Không gian 3D', level=1)
     if img_3d_bytes:
         doc.add_picture(img_3d_bytes, width=Inches(6.0))
-        doc.add_paragraph('Hình 2: Trực quan hóa cao độ Z của hệ thống đầu dò.').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph('Hình 2: Trực quan hóa không gian 3D. Đầu dò hiển thị màu trắng.').alignment = WD_ALIGN_PARAGRAPH.CENTER
+    else:
+        doc.add_paragraph('[Không thể tạo ảnh 3D do thiếu thư viện Kaleido]')
     
     doc_stream = io.BytesIO()
     doc.save(doc_stream)
@@ -219,7 +228,6 @@ def generate_scad(rx, ry, rz, df_obs, df_dets):
     scad += "    }\n}\n"
     return scad
 
-
 # ==========================================
 # 3. KẾT XUẤT ĐỒ HỌA & BÁO CÁO
 # ==========================================
@@ -228,11 +236,9 @@ if st.button("📊 Chạy Mô phỏng & Xuất Báo cáo Tự động", use_cont
     if edited_dets.empty:
         st.warning("⚠️ Vui lòng nhập thông số đầu dò!")
     else:
-        # Cảnh báo cao độ khí
         warnings = [d['ID'] for _, d in edited_dets.iterrows() if ("NHẸ" in gas_type and d['Z'] < room_z - 1.0) or ("NẶNG" in gas_type and d['Z'] > 1.0)]
         if warnings: st.warning(f"⚠️ Tư vấn: Các đầu dò {', '.join(warnings)} có cao độ Z chưa tối ưu với đặc tính khí!")
 
-        # Cảnh báo va chạm
         collided = check_collision(edited_dets, edited_obs)
         if collided:
             st.error(f"⛔ LỖI: Đầu dò {', '.join(collided)} đang đâm xuyên vào vật cản!")
@@ -241,28 +247,25 @@ if st.button("📊 Chạy Mô phỏng & Xuất Báo cáo Tự động", use_cont
                 st.header("3. Kết quả Mô phỏng")
                 col_res1, col_res2 = st.columns(2)
                 
-                # Vẽ 3D Plotly
                 fig_3d = generate_plotly_3d(room_x, room_y, room_z, edited_obs, edited_dets)
                 with col_res1: st.plotly_chart(fig_3d, use_container_width=True)
 
-                # Vẽ 2D Matplotlib
                 fig_2d, coverage = generate_2d_plot(room_x, room_y, edited_obs, edited_dets)
                 with col_res2: st.pyplot(fig_2d)
 
-                # Chụp ảnh 3D Plotly lưu vào RAM (Cần thư viện kaleido)
+                # CHỤP ẢNH 3D BẰNG KALEIDO
                 img_3d_bytes = io.BytesIO()
                 try:
                     fig_3d.write_image(img_3d_bytes, format='png', width=800, height=600)
                     img_3d_bytes.seek(0)
                 except Exception as e:
-                    img_3d_bytes = None # Nếu lỗi kaleido, bỏ qua ảnh 3D trong Word
-                    st.error("Chưa cài đặt thư viện 'kaleido' nên ảnh 3D sẽ không hiện trong Word.")
+                    img_3d_bytes = None
+                    st.error(f"Không thể chụp ảnh 3D để đưa vào Word. Lỗi hệ thống: {e}")
 
-                # Render File
                 word_stream = generate_word_report(fig_2d, img_3d_bytes, coverage, room_x, room_y)
                 scad_code = generate_scad(room_x, room_y, room_z, edited_obs, edited_dets)
                 
                 st.success(f"✅ Tỷ lệ bao phủ: {coverage:.1f}%")
                 col_d1, col_d2 = st.columns(2)
-                with col_d1: st.download_button("📄 Tải Báo cáo (Word)", word_stream, "Bao_Cao.docx", type="primary")
+                with col_d1: st.download_button("📄 Tải Báo cáo Kỹ thuật (Word)", word_stream, "Bao_Cao.docx", type="primary")
                 with col_d2: st.download_button("🧊 Tải Mã nguồn (.scad)", scad_code, "Mo_Hinh.scad")
