@@ -17,7 +17,7 @@ from matplotlib.path import Path
 # CẤU HÌNH TRANG WEB
 # ==========================================
 st.set_page_config(page_title="Riken Viet - Enterprise Gas Mapping", layout="wide")
-st.title("🛡️ Riken Viet - Hệ thống Thiết kế Vùng phủ Khí Đa lớp (3D) - Ver.0")
+st.title("🛡️ Riken Viet - Hệ thống Thiết kế Vùng phủ Khí Đa lớp (3D)")
 
 if 'room_data' not in st.session_state:
     st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0], "Y": [0, 0, 10, 10]}) 
@@ -31,21 +31,10 @@ if 'det_data' not in st.session_state:
 # ==========================================
 # 1. GIAO DIỆN NHẬP LIỆU & LƯỚI TỌA ĐỘ
 # ==========================================
-col_input1, col_input2 = st.columns([1, 1.3])
+col_input1, col_input2 = st.columns([1, 1.4])
 
 with col_input1:
-    st.header("1. Kiến trúc Phòng & Đặc tính Khí")
-    
-    st.subheader("🧪 Thông số Khí mục tiêu (Mix-Gas)")
-    selected_gases = st.multiselect(
-        "Chọn các hệ khí cần giám sát đồng thời:", 
-        [
-            "Khí Nhẹ (Sát trần) - CH4, H2...", 
-            "Khí Nặng (Sát sàn) - LPG, H2S...", 
-            "Khí Trung bình (Vùng thở) - CO, O2..."
-        ],
-        default=["Khí Nhẹ (Sát trần) - CH4, H2..."]
-    )
+    st.header("1. Kiến trúc Phòng Không gian")
     
     room_z = st.number_input("Chiều cao trần (Z) - mét", min_value=1.0, value=5.0)
 
@@ -61,7 +50,7 @@ with col_input1:
     st.caption("Hoặc tự do sửa tọa độ dưới đây để tạo phòng đa giác (L, U...):")
     edited_room = st.data_editor(st.session_state.room_data, num_rows="dynamic", use_container_width=True)
     
-    # VẼ LƯỚI KHÔNG GIAN (ĐÃ CẬP NHẬT: HIỂN THỊ CẢ ĐẦU DÒ)
+    # VẼ LƯỚI KHÔNG GIAN
     if len(edited_room) >= 3:
         room_coords = list(zip(edited_room['X'], edited_room['Y']))
         room_poly = Polygon(room_coords)
@@ -84,7 +73,7 @@ with col_input1:
                 bx, by = box.exterior.xy
                 ax_grid.fill(bx, by, color='gray', alpha=0.5)
                 
-        # Vẽ đầu dò lên lưới để kiểm tra sau khi sửa tọa độ tay
+        # Vẽ đầu dò lên lưới
         valid_colors = mcolors.CSS4_COLORS
         for _, det in st.session_state.det_data.iterrows():
             c = det['Color'].lower()
@@ -99,76 +88,87 @@ with col_input1:
         room_poly = None
 
 with col_input2:
-    st.header("2. Vật cản & Bố trí Đầu dò")
+    st.header("2. Vật cản & Bố trí Đầu dò Đa Lớp")
     
-    # BẢNG VẬT CẢN & NÚT CẬP NHẬT
     with st.expander("🚧 Danh sách Vật cản (Cylinder / Box)", expanded=True):
         edited_obs = st.data_editor(
             st.session_state.obs_data, num_rows="dynamic", use_container_width=True,
             column_config={"Type": st.column_config.SelectboxColumn("Loại", options=["Cylinder", "Box"])}
         )
         st.session_state.obs_data = edited_obs
-        
-        # Thêm nút cập nhật Vật cản
-        if st.button("🔄 Lưu & Hiển thị Vật cản lên lưới mặt bằng", type="secondary", use_container_width=True):
-            st.rerun()
+        if st.button("🔄 Lưu & Cập nhật Vật cản lên lưới", type="secondary"): st.rerun()
 
-    # BẢNG ĐẦU DÒ & NÚT CẬP NHẬT
-    with st.expander("⚙️ Tự động bố trí lưới Đầu dò ĐA LỚP", expanded=True):
-        col_calc1, col_calc2 = st.columns(2)
-        model_name = col_calc1.text_input("Tên Model thiết bị", value="SD-1")
-        radius_input = col_calc2.number_input("Bán kính bao phủ (m)", min_value=1.0, value=5.0, step=0.5)
+    # NÂNG CẤP CHI TIẾT: CẤU HÌNH TỪNG LỚP KHÍ
+    with st.expander("⚙️ Thiết lập Các Lớp Khí & Tự động Bố trí", expanded=True):
+        st.write("Kích hoạt và cấu hình thông số cho từng cao độ giám sát:")
         
-        if st.button("🚀 Tự động rải đầu dò (>80% an toàn)", type="primary"):
-            if not selected_gases:
-                st.warning("Vui lòng chọn ít nhất 1 loại khí ở cột bên trái!")
+        active_layers = []
+        
+        # 1. LỚP KHÍ NHẸ
+        use_light = st.checkbox("🌫️ Khí Nhẹ (Giám sát sát trần)", value=True)
+        if use_light:
+            c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1])
+            l_gas = c1.text_input("Tên Khí (VD: CH4)", value="CH4", key="lg")
+            l_mod = c2.text_input("Model Đầu dò", value="SD-1", key="lm")
+            l_rad = c3.number_input("Bán kính (m)", value=5.0, key="lr")
+            l_col = c4.selectbox("Màu hiển thị", ["cyan", "blue", "teal"], key="lc")
+            active_layers.append({"layer": "Khí Nhẹ", "gas": l_gas, "model": l_mod, "rad": l_rad, "color": l_col, "z": max(room_z - 0.5, 0.5)})
+
+        # 2. LỚP KHÍ TRUNG BÌNH
+        use_mid = st.checkbox("🌬️ Khí Tầm trung (Giám sát vùng thở)", value=False)
+        if use_mid:
+            c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1])
+            m_gas = c1.text_input("Tên Khí (VD: CO)", value="CO", key="mg")
+            m_mod = c2.text_input("Model Đầu dò", value="GD-70D", key="mm")
+            m_rad = c3.number_input("Bán kính (m)", value=5.0, key="mr")
+            m_col = c4.selectbox("Màu hiển thị", ["yellow", "orange", "lime"], key="mc")
+            active_layers.append({"layer": "Khí Tầm trung", "gas": m_gas, "model": m_mod, "rad": m_rad, "color": m_col, "z": 1.5})
+
+        # 3. LỚP KHÍ NẶNG
+        use_heavy = st.checkbox("☁️ Khí Nặng (Giám sát sát sàn)", value=False)
+        if use_heavy:
+            c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1])
+            h_gas = c1.text_input("Tên Khí (VD: H2S)", value="H2S", key="hg")
+            h_mod = c2.text_input("Model Đầu dò", value="SD-3", key="hm")
+            h_rad = c3.number_input("Bán kính (m)", value=4.0, key="hr") # Bán kính khí độc thường nhỏ hơn
+            h_col = c4.selectbox("Màu hiển thị", ["magenta", "red", "purple"], key="hc")
+            active_layers.append({"layer": "Khí Nặng", "gas": h_gas, "model": h_mod, "rad": h_rad, "color": h_col, "z": 0.5})
+
+        if st.button("🚀 Tự động Rải Đầu dò theo cấu hình", type="primary"):
+            if not active_layers:
+                st.warning("Vui lòng kích hoạt ít nhất 1 lớp khí!")
             elif room_poly is not None:
-                spacing = radius_input * 1.5 
-                minx, miny, maxx, maxy = room_poly.bounds
-                nx = max(1, math.ceil((maxx - minx) / spacing))
-                ny = max(1, math.ceil((maxy - miny) / spacing))
-                
-                x_steps = np.linspace(minx + (maxx-minx)/(2*nx), maxx - (maxx-minx)/(2*nx), nx)
-                y_steps = np.linspace(miny + (maxy-miny)/(2*ny), maxy - (maxy-miny)/(2*ny), ny)
-                
-                new_dets, count = [], 1
-                
-                for gas in selected_gases:
-                    if "Nhẹ" in gas: 
-                        z_val, g_name, c_color = max(room_z - 0.5, 0.5), "Khí Nhẹ", "cyan"
-                    elif "Nặng" in gas: 
-                        z_val, g_name, c_color = 0.5, "Khí Nặng", "magenta"
-                    else: 
-                        z_val, g_name, c_color = 1.5, "Khí Trung bình", "yellow"
-                        
+                new_dets = []
+                # Lặp qua từng lớp khí để rải lưới (Cho phép các lớp có số lượng đầu dò khác nhau do bán kính khác nhau)
+                for layer in active_layers:
+                    spacing = layer["rad"] * 1.5 
+                    minx, miny, maxx, maxy = room_poly.bounds
+                    nx = max(1, math.ceil((maxx - minx) / spacing))
+                    ny = max(1, math.ceil((maxy - miny) / spacing))
+                    
+                    x_steps = np.linspace(minx + (maxx-minx)/(2*nx), maxx - (maxx-minx)/(2*nx), nx)
+                    y_steps = np.linspace(miny + (maxy-miny)/(2*ny), maxy - (maxy-miny)/(2*ny), ny)
+                    
+                    count = 1
                     for x in x_steps:
                         for y in y_steps:
                             pt = Point(x, y)
                             if room_poly.contains(pt): 
                                 new_dets.append({
-                                    "ID": f"{model_name}-{g_name[:4]} ({count:02d})", 
-                                    "Gas": g_name, "X": round(x, 1), "Y": round(y, 1),
-                                    "Z": z_val, "Radius": radius_input, "Color": c_color
+                                    "ID": f"{layer['model']} ({count:02d})", 
+                                    "Gas": f"{layer['gas']} ({layer['layer']})", # Lưu rõ Tên khí + Thuộc tính
+                                    "X": round(x, 1), "Y": round(y, 1),
+                                    "Z": layer["z"], "Radius": layer["rad"], "Color": layer["color"]
                                 })
                                 count += 1
                 
                 st.session_state.det_data = pd.DataFrame(new_dets)
-                st.success(f"Đã rải thành công {count-1} đầu dò cho {len(selected_gases)} hệ khí!")
+                st.success(f"Đã rải thành công {len(new_dets)} đầu dò!")
                 st.rerun()
 
-    st.write("📋 **Bảng Tọa độ Đầu dò & Loại khí (Chỉnh sửa thủ công nếu cần):**")
-    edited_dets = st.data_editor(
-        st.session_state.det_data, num_rows="dynamic", use_container_width=True,
-        column_config={
-            "Gas": st.column_config.SelectboxColumn("Nhóm Khí", options=["Khí Nhẹ", "Khí Trung bình", "Khí Nặng"]),
-            "Color": st.column_config.SelectboxColumn("Màu", options=["cyan", "magenta", "yellow", "lime", "red", "white"])
-        }
-    )
-    st.session_state.det_data = edited_dets
-    
-    # Thêm nút cập nhật Đầu dò
-    if st.button("🔄 Lưu & Cập nhật Đầu dò lên lưới mặt bằng", type="secondary", use_container_width=True):
-        st.rerun()
+    st.write("📋 **Bảng Tọa độ Đầu dò (Chỉnh sửa thủ công nếu cần):**")
+    edited_dets = st.data_editor(st.session_state.det_data, num_rows="dynamic", use_container_width=True)
+    if st.button("🔄 Lưu & Cập nhật Đầu dò lên lưới mặt bằng", type="secondary"): st.rerun()
 
 
 # ==========================================
@@ -246,9 +246,11 @@ def generate_2d_plot(room_poly, obs_polys, df_dets_group, gas_name):
         c = det['Color'].lower()
         use_c = c if c in valid_colors else 'blue'
         ax.add_patch(plt.Circle((det['X'], det['Y']), det['Radius'], color=use_c, fill=False, linestyle='--', lw=1.5, zorder=3))
+        # Hiển thị tên Model + Tên Khí bên cạnh biểu tượng đầu dò trên đồ thị 2D
+        ax.text(det['X']+0.3, det['Y']+0.3, f"{det['ID']}", fontsize=8, color='black', zorder=6, bbox=dict(facecolor='white', alpha=0.6, edgecolor='none', pad=1))
         ax.plot(det['X'], det['Y'], '^', color=use_c, markersize=12, markeredgecolor='black', zorder=5)
 
-    ax.set_title(f"Lớp: {gas_name} | Mức an toàn: {ty_le:.1f}%", fontweight='bold')
+    ax.set_title(f"Hệ thống: {gas_name} | Mức an toàn: {ty_le:.1f}%", fontweight='bold')
     ax.axis('equal'); ax.grid(True, linestyle=':', alpha=0.5)
     return fig, ty_le
 
@@ -267,7 +269,13 @@ def generate_plotly_3d_complex(room_poly, rz, obs_polys, df_obs, df_dets):
         return r*np.cos(u)*np.sin(v)+x0, r*np.sin(u)*np.sin(v)+y0, r*np.cos(v)+z0
 
     for _, det in df_dets.iterrows():
-        fig.add_trace(go.Scatter3d(x=[det['X']], y=[det['Y']], z=[det['Z']], mode='markers', marker=dict(size=6, color='white'), name=det['ID']))
+        # Label 3D hiển thị rõ Tên Khí và Model
+        hover_label = f"Model: {det['ID']}<br>Mục tiêu: {det['Gas']}<br>Cao độ Z: {det['Z']}m"
+        fig.add_trace(go.Scatter3d(x=[det['X']], y=[det['Y']], z=[det['Z']], mode='markers+text', 
+                                   marker=dict(size=6, color='white'), 
+                                   text=[det['ID']], textposition="top center", textfont=dict(color="white", size=10),
+                                   name=det['ID'], hoverinfo="text", hovertext=hover_label))
+        
         sx, sy, sz = get_sphere(det['X'], det['Y'], det['Z'], det['Radius'])
         fig.add_trace(go.Surface(x=sx, y=sy, z=sz, opacity=0.15, showscale=False, colorscale=[[0, det['Color']], [1, det['Color']]]))
 
@@ -293,7 +301,7 @@ def generate_plotly_3d_complex(room_poly, rz, obs_polys, df_obs, df_dets):
             aspectmode='data'
         ),
         paper_bgcolor="rgb(15,15,15)", plot_bgcolor="rgb(15,15,15)",
-        margin=dict(l=0, r=0, b=0, t=30), legend=dict(font=dict(color='white'))
+        margin=dict(l=0, r=0, b=0, t=30), showlegend=False # Tắt legend vì đã hiện Text Label trực tiếp trên 3D
     )
     return fig
 
@@ -309,16 +317,16 @@ def generate_word_report(figs_dict, img_3d_bytes):
     doc.add_heading('1. Phân bổ Không gian 3D Tổng thể', level=1)
     if img_3d_bytes:
         doc.add_picture(img_3d_bytes, width=Inches(6.0))
-        doc.add_paragraph('Hình 1: Trực quan hóa cao độ đầu dò và vật cản 3D.').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph('Hình 1: Trực quan hóa cao độ thiết bị và vật cản 3D.').alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    doc.add_heading('2. Phân tích Điểm mù theo Lớp Khí (Mặt bằng)', level=1)
+    doc.add_heading('2. Phân tích Điểm mù theo Hệ Khí (Mặt bằng)', level=1)
     for gas_name, fig in figs_dict.items():
         doc.add_heading(f'Hệ thống giám sát: {gas_name}', level=2)
         img_stream = io.BytesIO()
         fig.savefig(img_stream, format='png', bbox_inches='tight', dpi=150)
         img_stream.seek(0)
         doc.add_picture(img_stream, width=Inches(6.0))
-        doc.add_paragraph(f'Bản đồ cắt ngang mặt phẳng bảo vệ của {gas_name}.').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph(f'Bản đồ phân tích giao thoa bảo vệ của hệ thống đo {gas_name}.').alignment = WD_ALIGN_PARAGRAPH.CENTER
     
     doc_stream = io.BytesIO()
     doc.save(doc_stream)
@@ -355,7 +363,7 @@ if st.button("📊 Chạy Mô phỏng Kiến trúc Phức hợp & Tải Báo cá
 
                     # VẼ 2D TÁCH LỚP
                     gas_groups = edited_dets['Gas'].unique()
-                    tabs = st.tabs([f"Lớp: {g}" for g in gas_groups])
+                    tabs = st.tabs([f"Bản đồ: {g}" for g in gas_groups])
                     generated_figs = {}
                     
                     for i, gas_name in enumerate(gas_groups):
