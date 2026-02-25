@@ -13,12 +13,14 @@ from shapely.geometry import Point, LineString, Polygon
 import shapely.affinity as affinity
 from matplotlib.path import Path
 
+# ==========================================
+# CẤU HÌNH TRANG WEB
+# ==========================================
 st.set_page_config(page_title="Riken Viet - Enterprise Gas Mapping", layout="wide")
-st.title("🛡️ Riken Viet - Hệ thống Thiết kế Vùng phủ Khí Đa lớp (3D)")
+st.title("🛡️ Riken Viet - Hệ thống Thiết kế Vùng phủ Khí Đa lớp (3D) - Ver.0")
 
-# --- QUẢN LÝ DỮ LIỆU TẠM (SESSION STATE) ---
 if 'room_data' not in st.session_state:
-    st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0], "Y": [0, 0, 10, 10]}) # Mặc định phòng 15x10
+    st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0], "Y": [0, 0, 10, 10]}) 
 if 'obs_data' not in st.session_state:
     st.session_state.obs_data = pd.DataFrame([
         {"Type": "Cylinder", "X": 7.5, "Y": 5.0, "Width_Radius": 1.5, "Length": 0.0, "Height": 4.0, "Angle": 0}
@@ -34,33 +36,19 @@ col_input1, col_input2 = st.columns([1, 1.3])
 with col_input1:
     st.header("1. Kiến trúc Phòng & Đặc tính Khí")
     
-    # 1.1 TƯ VẤN ĐẶC TÍNH KHÍ (Đã khôi phục)
-    st.subheader("🧪 Thông số Khí mục tiêu")
-    gas_type = st.selectbox(
-        "Loại khí cần giám sát (Quyết định cao độ Z):", 
+    st.subheader("🧪 Thông số Khí mục tiêu (Mix-Gas)")
+    selected_gases = st.multiselect(
+        "Chọn các hệ khí cần giám sát đồng thời:", 
         [
-            "Khí CHÁY/ĐỘC NHẸ hơn không khí (CH4, H2, NH3...)", 
-            "Khí CHÁY/ĐỘC NẶNG hơn không khí (LPG, H2S, VOCs...)", 
-            "Khí có TỶ TRỌNG TƯƠNG ĐƯƠNG không khí (CO, O2...)"
-        ]
+            "Khí Nhẹ (Sát trần) - CH4, H2...", 
+            "Khí Nặng (Sát sàn) - LPG, H2S...", 
+            "Khí Trung bình (Vùng thở) - CO, O2..."
+        ],
+        default=["Khí Nhẹ (Sát trần) - CH4, H2..."]
     )
     
     room_z = st.number_input("Chiều cao trần (Z) - mét", min_value=1.0, value=5.0)
 
-    # Tính toán Z tối ưu và tên nhóm khí ngắn gọn
-    if "NHẸ" in gas_type: 
-        recommended_z = max(room_z - 0.5, 0.5)
-        short_gas_name = "Khí Nhẹ"
-    elif "NẶNG" in gas_type: 
-        recommended_z = 0.5
-        short_gas_name = "Khí Nặng"
-    else: 
-        recommended_z = 1.5
-        short_gas_name = "Khí Trung bình"
-    
-    st.info(f"💡 Cao độ Z tối ưu đề xuất: **{recommended_z}m**")
-
-    # 1.2 CẤU HÌNH HÌNH DÁNG PHÒNG (Nhanh & Nâng cao)
     st.subheader("📐 Tọa độ Đỉnh tường (Mặt bằng)")
     col_r1, col_r2 = st.columns(2)
     with col_r1: quick_x = st.number_input("Tạo nhanh Chiều Dài (X)", value=15.0)
@@ -70,10 +58,10 @@ with col_input1:
         st.session_state.room_data = pd.DataFrame({"X": [0, quick_x, quick_x, 0], "Y": [0, 0, quick_y, quick_y]})
         st.rerun()
     
-    st.caption("Hoặc nhập tọa độ tự do bên dưới để tạo phòng chữ L, U, Đa giác:")
+    st.caption("Hoặc tự do sửa tọa độ dưới đây để tạo phòng đa giác (L, U...):")
     edited_room = st.data_editor(st.session_state.room_data, num_rows="dynamic", use_container_width=True)
     
-    # VẼ LƯỚI KHÔNG GIAN
+    # VẼ LƯỚI KHÔNG GIAN (ĐÃ CẬP NHẬT: HIỂN THỊ CẢ ĐẦU DÒ)
     if len(edited_room) >= 3:
         room_coords = list(zip(edited_room['X'], edited_room['Y']))
         room_poly = Polygon(room_coords)
@@ -83,7 +71,7 @@ with col_input1:
         ax_grid.plot(x_ext, y_ext, color='#333333', linewidth=2)
         ax_grid.fill(x_ext, y_ext, alpha=0.1, color='blue')
         
-        # Vẽ phác thảo vật cản
+        # Vẽ vật cản lên lưới
         for _, obs in st.session_state.obs_data.iterrows():
             if obs['Type'] == 'Cylinder':
                 c = plt.Circle((obs['X'], obs['Y']), obs['Width_Radius'], color='gray', alpha=0.5)
@@ -95,6 +83,13 @@ with col_input1:
                 box = affinity.rotate(box, obs.get('Angle', 0), origin='center')
                 bx, by = box.exterior.xy
                 ax_grid.fill(bx, by, color='gray', alpha=0.5)
+                
+        # Vẽ đầu dò lên lưới để kiểm tra sau khi sửa tọa độ tay
+        valid_colors = mcolors.CSS4_COLORS
+        for _, det in st.session_state.det_data.iterrows():
+            c = det['Color'].lower()
+            use_c = c if c in valid_colors else 'blue'
+            ax_grid.plot(det['X'], det['Y'], '^', color=use_c, markersize=8, markeredgecolor='black')
 
         ax_grid.set_aspect('equal')
         ax_grid.grid(True, linestyle='--', alpha=0.5)
@@ -106,22 +101,28 @@ with col_input1:
 with col_input2:
     st.header("2. Vật cản & Bố trí Đầu dò")
     
-    # 2.1 VẬT CẢN ĐA DẠNG
+    # BẢNG VẬT CẢN & NÚT CẬP NHẬT
     with st.expander("🚧 Danh sách Vật cản (Cylinder / Box)", expanded=True):
         edited_obs = st.data_editor(
             st.session_state.obs_data, num_rows="dynamic", use_container_width=True,
             column_config={"Type": st.column_config.SelectboxColumn("Loại", options=["Cylinder", "Box"])}
         )
         st.session_state.obs_data = edited_obs
+        
+        # Thêm nút cập nhật Vật cản
+        if st.button("🔄 Lưu & Hiển thị Vật cản lên lưới mặt bằng", type="secondary", use_container_width=True):
+            st.rerun()
 
-    # 2.2 TỰ ĐỘNG BỐ TRÍ ĐẦU DÒ (Đã khôi phục & Nâng cấp Shapely)
-    with st.expander("⚙️ Tự động bố trí lưới Đầu dò", expanded=True):
+    # BẢNG ĐẦU DÒ & NÚT CẬP NHẬT
+    with st.expander("⚙️ Tự động bố trí lưới Đầu dò ĐA LỚP", expanded=True):
         col_calc1, col_calc2 = st.columns(2)
         model_name = col_calc1.text_input("Tên Model thiết bị", value="SD-1")
         radius_input = col_calc2.number_input("Bán kính bao phủ (m)", min_value=1.0, value=5.0, step=0.5)
         
         if st.button("🚀 Tự động rải đầu dò (>80% an toàn)", type="primary"):
-            if room_poly is not None:
+            if not selected_gases:
+                st.warning("Vui lòng chọn ít nhất 1 loại khí ở cột bên trái!")
+            elif room_poly is not None:
                 spacing = radius_input * 1.5 
                 minx, miny, maxx, maxy = room_poly.bounds
                 nx = max(1, math.ceil((maxx - minx) / spacing))
@@ -131,28 +132,31 @@ with col_input2:
                 y_steps = np.linspace(miny + (maxy-miny)/(2*ny), maxy - (maxy-miny)/(2*ny), ny)
                 
                 new_dets, count = [], 1
-                colors = ["cyan", "magenta", "yellow", "lime", "red", "blue"]
-                for x in x_steps:
-                    for y in y_steps:
-                        pt = Point(x, y)
-                        # CHỈ RẢI ĐẦU DÒ NẾU ĐIỂM ĐÓ NẰM BÊN TRONG CĂN PHÒNG (Quan trọng cho phòng chữ L, đa giác)
-                        if room_poly.contains(pt):
-                            new_dets.append({
-                                "ID": f"{model_name} ({count:02d})", 
-                                "Gas": short_gas_name, # Tự động lấy nhóm khí đang chọn
-                                "X": round(x, 1), "Y": round(y, 1),
-                                "Z": recommended_z, # Tự động lấy độ cao Z lý tưởng
-                                "Radius": radius_input, 
-                                "Color": colors[count % len(colors)]
-                            })
-                            count += 1
                 
-                # Ghi đè vào bảng
+                for gas in selected_gases:
+                    if "Nhẹ" in gas: 
+                        z_val, g_name, c_color = max(room_z - 0.5, 0.5), "Khí Nhẹ", "cyan"
+                    elif "Nặng" in gas: 
+                        z_val, g_name, c_color = 0.5, "Khí Nặng", "magenta"
+                    else: 
+                        z_val, g_name, c_color = 1.5, "Khí Trung bình", "yellow"
+                        
+                    for x in x_steps:
+                        for y in y_steps:
+                            pt = Point(x, y)
+                            if room_poly.contains(pt): 
+                                new_dets.append({
+                                    "ID": f"{model_name}-{g_name[:4]} ({count:02d})", 
+                                    "Gas": g_name, "X": round(x, 1), "Y": round(y, 1),
+                                    "Z": z_val, "Radius": radius_input, "Color": c_color
+                                })
+                                count += 1
+                
                 st.session_state.det_data = pd.DataFrame(new_dets)
-                st.success(f"Đã rải thành công {count-1} đầu dò vào bên trong khu vực!")
+                st.success(f"Đã rải thành công {count-1} đầu dò cho {len(selected_gases)} hệ khí!")
                 st.rerun()
 
-    st.write("📋 **Bảng Tọa độ Đầu dò & Loại khí:**")
+    st.write("📋 **Bảng Tọa độ Đầu dò & Loại khí (Chỉnh sửa thủ công nếu cần):**")
     edited_dets = st.data_editor(
         st.session_state.det_data, num_rows="dynamic", use_container_width=True,
         column_config={
@@ -161,10 +165,14 @@ with col_input2:
         }
     )
     st.session_state.det_data = edited_dets
+    
+    # Thêm nút cập nhật Đầu dò
+    if st.button("🔄 Lưu & Cập nhật Đầu dò lên lưới mặt bằng", type="secondary", use_container_width=True):
+        st.rerun()
 
 
 # ==========================================
-# 2. LÕI TOÁN HỌC KHÔNG GIAN (GIỮ NGUYÊN BẢN ENTERPRISE)
+# 2. CÁC HÀM LÕI TOÁN HỌC & ĐỒ HỌA
 # ==========================================
 def create_obstacle_polys(df_obs):
     obs_polys = []
@@ -178,6 +186,15 @@ def create_obstacle_polys(df_obs):
             box = affinity.rotate(box, row.get('Angle', 0), origin='center')
             obs_polys.append(box)
     return obs_polys
+
+def check_collision_shapely(df_dets, obs_polys):
+    collisions = []
+    if not obs_polys or df_dets.empty: return collisions
+    for _, det in df_dets.iterrows():
+        pt = Point(det['X'], det['Y'])
+        if any(poly.contains(pt) for poly in obs_polys):
+            collisions.append(det['ID'])
+    return collisions
 
 def generate_2d_plot(room_poly, obs_polys, df_dets_group, gas_name):
     minx, miny, maxx, maxy = room_poly.bounds
@@ -235,9 +252,6 @@ def generate_2d_plot(room_poly, obs_polys, df_dets_group, gas_name):
     ax.axis('equal'); ax.grid(True, linestyle=':', alpha=0.5)
     return fig, ty_le
 
-# ==========================================
-# 3. MÔ HÌNH PLOTLY 3D TƯƠNG TÁC ĐA LỚP
-# ==========================================
 def generate_plotly_3d_complex(room_poly, rz, obs_polys, df_obs, df_dets):
     fig = go.Figure()
     rx, ry = room_poly.exterior.xy
@@ -253,7 +267,6 @@ def generate_plotly_3d_complex(room_poly, rz, obs_polys, df_obs, df_dets):
         return r*np.cos(u)*np.sin(v)+x0, r*np.sin(u)*np.sin(v)+y0, r*np.cos(v)+z0
 
     for _, det in df_dets.iterrows():
-        # ĐẦU DÒ MÀU TRẮNG TRÊN NỀN TỐI
         fig.add_trace(go.Scatter3d(x=[det['X']], y=[det['Y']], z=[det['Z']], mode='markers', marker=dict(size=6, color='white'), name=det['ID']))
         sx, sy, sz = get_sphere(det['X'], det['Y'], det['Z'], det['Radius'])
         fig.add_trace(go.Surface(x=sx, y=sy, z=sz, opacity=0.15, showscale=False, colorscale=[[0, det['Color']], [1, det['Color']]]))
@@ -285,7 +298,7 @@ def generate_plotly_3d_complex(room_poly, rz, obs_polys, df_obs, df_dets):
     return fig
 
 # ==========================================
-# 4. WORD REPORT (ĐA LỚP)
+# 3. WORD REPORT (ĐA LỚP)
 # ==========================================
 def generate_word_report(figs_dict, img_3d_bytes):
     doc = Document()
@@ -313,56 +326,58 @@ def generate_word_report(figs_dict, img_3d_bytes):
     return doc_stream
 
 # ==========================================
-# 5. TRIGGER KẾT XUẤT
+# 4. TRIGGER KẾT XUẤT
 # ==========================================
 st.markdown("---")
-if st.button("📊 Chạy Mô phỏng Kiến trúc Phức hợp", use_container_width=True, type='primary'):
+if st.button("📊 Chạy Mô phỏng Kiến trúc Phức hợp & Tải Báo cáo", use_container_width=True, type='primary'):
     if room_poly is None or edited_dets.empty:
         st.warning("⚠️ Vui lòng nhập đủ tọa độ phòng và danh sách đầu dò!")
     else:
         try:
             obs_polys = create_obstacle_polys(edited_obs)
             
-            with st.spinner('Đang dùng thuật toán Nội suy Raycasting và rà soát bóng mờ đa lớp...'):
-                st.header("3. Phân tích Kết quả Đồ họa")
-                
-                # VẼ 3D TỔNG THỂ NỀN TỐI
-                fig_3d = generate_plotly_3d_complex(room_poly, room_z, obs_polys, edited_obs, edited_dets)
-                st.plotly_chart(fig_3d, use_container_width=True)
-                
-                # Chụp ảnh 3D
-                img_3d_bytes = io.BytesIO()
-                try:
-                    fig_3d.write_image(img_3d_bytes, format='png', width=800, height=500)
-                    img_3d_bytes.seek(0)
-                except: img_3d_bytes = None
+            collided = check_collision_shapely(edited_dets, obs_polys)
+            if collided:
+                st.error(f"⛔ LỖI VA CHẠM: Đầu dò **{', '.join(collided)}** đang bị đặt nằm bên trong vật cản! Vui lòng chỉnh lại tọa độ X, Y.")
+            else:
+                with st.spinner('Đang dùng thuật toán Nội suy Raycasting và rà soát bóng mờ đa lớp...'):
+                    st.header("3. Phân tích Kết quả Đồ họa")
+                    
+                    # VẼ 3D
+                    fig_3d = generate_plotly_3d_complex(room_poly, room_z, obs_polys, edited_obs, edited_dets)
+                    st.plotly_chart(fig_3d, use_container_width=True)
+                    
+                    img_3d_bytes = io.BytesIO()
+                    try:
+                        fig_3d.write_image(img_3d_bytes, format='png', width=800, height=500)
+                        img_3d_bytes.seek(0)
+                    except: img_3d_bytes = None
 
-                # VẼ 2D TÁCH LỚP (TABS) DỰA THEO "NHÓM KHÍ"
-                gas_groups = edited_dets['Gas'].unique()
-                tabs = st.tabs([f"Lớp: {g}" for g in gas_groups])
-                
-                generated_figs = {}
-                
-                for i, gas_name in enumerate(gas_groups):
-                    with tabs[i]:
-                        df_group = edited_dets[edited_dets['Gas'] == gas_name]
-                        fig_2d, coverage = generate_2d_plot(room_poly, obs_polys, df_group, gas_name)
-                        st.pyplot(fig_2d)
-                        if coverage >= 80:
-                            st.success(f"✅ Tỷ lệ bao phủ của {gas_name} đạt chuẩn: {coverage:.1f}%")
-                        else:
-                            st.warning(f"⚠️ Tỷ lệ bao phủ của {gas_name} chỉ đạt: {coverage:.1f}%")
-                        generated_figs[gas_name] = fig_2d
-                
-                # XUẤT WORD
-                word_stream = generate_word_report(generated_figs, img_3d_bytes)
-                st.download_button("📄 Tải Báo cáo Tư vấn Chuyên sâu (Word)", word_stream, "Bao_Cao_RikenViet.docx", type="primary")
+                    # VẼ 2D TÁCH LỚP
+                    gas_groups = edited_dets['Gas'].unique()
+                    tabs = st.tabs([f"Lớp: {g}" for g in gas_groups])
+                    generated_figs = {}
+                    
+                    for i, gas_name in enumerate(gas_groups):
+                        with tabs[i]:
+                            df_group = edited_dets[edited_dets['Gas'] == gas_name]
+                            fig_2d, coverage = generate_2d_plot(room_poly, obs_polys, df_group, gas_name)
+                            st.pyplot(fig_2d)
+                            if coverage >= 80:
+                                st.success(f"✅ Tỷ lệ bao phủ của {gas_name} đạt chuẩn: {coverage:.1f}%")
+                            else:
+                                st.warning(f"⚠️ Tỷ lệ bao phủ của {gas_name} chỉ đạt: {coverage:.1f}%")
+                            generated_figs[gas_name] = fig_2d
+                    
+                    # XUẤT WORD
+                    word_stream = generate_word_report(generated_figs, img_3d_bytes)
+                    st.download_button("📄 Tải Báo cáo Tư vấn Chuyên sâu (Word)", word_stream, "Bao_Cao_RikenViet.docx", type="primary")
 
         except Exception as e:
             st.error(f"Lỗi hệ thống: {e}. Vui lòng kiểm tra lại tọa độ đa giác hoặc thông số nhập liệu.")
 
 # ==========================================
-# 6. FOOTER (BẢN QUYỀN TÁC GIẢ)
+# 5. FOOTER (BẢN QUYỀN TÁC GIẢ)
 # ==========================================
 st.markdown("""
     <hr style="border: 0; height: 1px; background-image: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0)); margin-top: 50px;">
