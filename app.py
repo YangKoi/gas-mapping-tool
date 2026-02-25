@@ -56,7 +56,7 @@ with col1:
 with col2:
     st.header("2. Vật cản & Bố trí Đầu dò")
     
-    with st.expander("📌 Nhập Vật cản (Hình trụ)", expanded=True):
+    with st.expander("📌 Nhập Vật cản ", expanded=True):
         default_obstacles = pd.DataFrame([{"Type": "Cylinder", "X": 7.5, "Y": 5.0, "Radius": 1.5, "Height": 3.5}])
         edited_obs = st.data_editor(default_obstacles, num_rows="dynamic", use_container_width=True)
 
@@ -269,3 +269,14 @@ if st.button("📊 Chạy Mô phỏng & Xuất Báo cáo Tự động", use_cont
                 col_d1, col_d2 = st.columns(2)
                 with col_d1: st.download_button("📄 Tải Báo cáo Kỹ thuật (Word)", word_stream, "Bao_Cao.docx", type="primary")
                 with col_d2: st.download_button("🧊 Tải Mã nguồn (.scad)", scad_code, "Mo_Hinh.scad")
+
+# ==========================================
+# 4. FOOTER (BẢN QUYỀN TÁC GIẢ)
+# ==========================================
+st.markdown("""
+    <hr style="border: 0; height: 1px; background-image: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0)); margin-top: 50px;">
+    <div style="text-align: center; color: #888888; font-size: 14px; padding-bottom: 20px;">
+        &copy; 2026 All Rights Reserved.<br>
+        Designed and programmed by <b>trggiang</b>.
+    </div>
+""", unsafe_allow_html=True)
