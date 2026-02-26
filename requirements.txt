@@ -6,5 +6,6 @@ python-docx
 plotly
 kaleido==0.2.1
 shapely
+streamlit-drawable-canvas
 
 
