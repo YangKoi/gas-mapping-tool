@@ -12,7 +12,6 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from shapely.geometry import Point, LineString, Polygon
 import shapely.affinity as affinity
 from matplotlib.path import Path
-from streamlit_drawable_canvas import st_canvas
 
 # ==========================================
 # CẤU HÌNH TRANG WEB
@@ -21,7 +20,7 @@ st.set_page_config(page_title="Riken Viet - Enterprise Gas Mapping", layout="wid
 st.title("🛡️ Riken Viet - Hệ thống Thiết kế Vùng phủ Khí Đa lớp (3D)")
 
 if 'room_data' not in st.session_state:
-    st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0, 0], "Y": [0, 0, 10, 10, 0]}) 
+    st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0], "Y": [0, 0, 10, 10]}) 
 if 'obs_data' not in st.session_state:
     st.session_state.obs_data = pd.DataFrame([
         {"Type": "Cylinder", "X": 7.5, "Y": 5.0, "Width_Radius": 1.5, "Length": 0.0, "Height": 4.0, "Angle": 0}
@@ -35,7 +34,7 @@ if 'det_data' not in st.session_state:
     st.session_state.det_data = pd.DataFrame(columns=["ID", "Gas", "X", "Y", "Z", "Radius", "Color"])
 
 # ==========================================
-# 1. GIAO DIỆN NHẬP LIỆU & BẢNG VẼ TƯƠNG TÁC
+# 1. GIAO DIỆN NHẬP LIỆU: THIẾT KẾ THAM SỐ (PARAMETRIC)
 # ==========================================
 col_input1, col_input2 = st.columns([1.2, 1])
 
@@ -43,77 +42,88 @@ with col_input1:
     st.header("1. Kiến trúc Phòng Không gian")
     room_z = st.number_input("Chiều cao trần (Z) - mét", min_value=1.0, value=5.0)
 
-    st.subheader("🖍️ Bảng vẽ Mặt bằng (Auto-Snap)")
-    st.markdown("""
-    **Mẹo vẽ chuẩn xác:** 1. Chọn công cụ vẽ Đa giác (Polygon) ở thanh công cụ bên trái.
-    2. Click để chấm các góc tường. Đừng lo vẽ lệch, AI sẽ tự nắn thẳng.
-    3. 🚨 **CÁCH CHỐT HÌNH:** Để khép kín phòng, hãy click chuột nối lại vào **ĐÚNG ĐIỂM XUẤT PHÁT ĐẦU TIÊN**, hoặc bấm phím **ESC** trên bàn phím! Đừng click đúp chuột nhé.
-    """)
+    st.subheader("📐 Định hình Không gian (Parametric Builder)")
+    st.markdown("Chọn biên dạng nhà xưởng và nhập kích thước, AI sẽ tự động dựng hình chính xác 100%.")
     
-    canvas_w, canvas_h, grid_size = 600, 400, 20 # Quy ước: 20 pixels = 1 mét
+    # Lựa chọn Template Hình dáng
+    shape_type = st.radio("Chọn biên dạng:", ["Chữ Nhật 🟩", "Chữ L ▛", "Chữ U ⨆", "Tự do chỉnh tọa độ ✏️"], horizontal=True)
+
+    # Nạp dữ liệu kích thước theo Template
+    if shape_type == "Chữ Nhật 🟩":
+        c1, c2 = st.columns(2)
+        l = c1.number_input("Chiều Dài (X)", value=15.0, step=1.0)
+        w = c2.number_input("Chiều Rộng (Y)", value=10.0, step=1.0)
+        st.session_state.room_data = pd.DataFrame({"X": [0, l, l, 0], "Y": [0, 0, w, w]})
+
+    elif shape_type == "Chữ L ▛":
+        c1, c2 = st.columns(2)
+        l_base = c1.number_input("Chiều dài đáy ngang", value=15.0, step=1.0)
+        w_base = c2.number_input("Bề dày đáy ngang", value=6.0, step=1.0)
+        l_arm = c1.number_input("Chiều cao nhánh đứng", value=12.0, step=1.0)
+        w_arm = c2.number_input("Bề dày nhánh đứng", value=5.0, step=1.0)
+        st.session_state.room_data = pd.DataFrame({
+            "X": [0, l_base, l_base, w_arm, w_arm, 0],
+            "Y": [0, 0, w_base, w_base, l_arm, l_arm]
+        })
+
+    elif shape_type == "Chữ U ⨆":
+        c1, c2, c3 = st.columns(3)
+        l_base = c1.number_input("Chiều dài đáy", value=20.0, step=1.0)
+        w_base = c1.number_input("Bề dày đáy", value=5.0, step=1.0)
+        l_arms = c2.number_input("Chiều cao 2 nhánh", value=15.0, step=1.0)
+        w_arms = c3.number_input("Bề dày nhánh", value=5.0, step=1.0)
+        st.session_state.room_data = pd.DataFrame({
+            "X": [0, l_base, l_base, l_base-w_arms, l_base-w_arms, w_arms, w_arms, 0],
+            "Y": [0, 0, l_arms, l_arms, w_base, w_base, l_arms, l_arms]
+        })
+
+    st.caption("👇 Bảng tọa độ toán học được AI sinh ra (chọn 'Tự do' để sửa tay):")
+    # Khóa bảng nếu đang dùng Template, chỉ mở nếu chọn "Tự do"
+    is_disabled = shape_type != "Tự do chỉnh tọa độ ✏️"
+    edited_room = st.data_editor(st.session_state.room_data, num_rows="dynamic", use_container_width=True, disabled=is_disabled)
     
-    canvas_result = st_canvas(
-        fill_color="rgba(0, 255, 150, 0.3)",  
-        stroke_width=3,
-        stroke_color="#00FFAA",
-        background_color="#1E1E1E", 
-        height=canvas_h, width=canvas_w,
-        drawing_mode="polygon",
-        key="canvas",
-    )
-
-    # NÚT ĐỒNG BỘ NÉT VẼ
-    if st.button("📥 Bấm vào đây để Đồng bộ nét vẽ xuống Tọa độ", type="primary", use_container_width=True):
-        if canvas_result.json_data is not None:
-            objects = canvas_result.json_data["objects"]
-            if len(objects) > 0:
-                last_obj = objects[-1]
-                if "points" in last_obj:
-                    pts = last_obj["points"]
-                    drawn_room = []
-                    for p in pts:
-                        # Tọa độ tuyệt đối: Lấy vị trí click chia cho tỷ lệ mét
-                        real_x = p["x"] / grid_size
-                        real_y = p["y"] / grid_size
-                        
-                        # AUTO-SNAP: Nắn về bội số của 0.5m
-                        snap_x = round(real_x * 2) / 2
-                        snap_y = round(real_y * 2) / 2
-                        drawn_room.append({"X": snap_x, "Y": snap_y})
-                    
-                    # Tự động khép vòng tọa độ nếu điểm đầu khác điểm cuối
-                    if drawn_room[0] != drawn_room[-1]:
-                        drawn_room.append(drawn_room[0])
-                    
-                    df_drawn = pd.DataFrame(drawn_room)
-                    # Lọc các điểm click đúp trùng nhau
-                    df_drawn = df_drawn.loc[(df_drawn.shift() != df_drawn).any(axis=1)].reset_index(drop=True)
-                    st.session_state.room_data = df_drawn
-                    st.success(f"✅ Đã nhận diện thành công phòng đa giác với {len(df_drawn)-1} góc!")
-                else:
-                    st.error("Chưa nhận diện được hình khối. Nhớ 'Click đúp chuột' khi vẽ xong nhé!")
-            else:
-                st.warning("Bảng vẽ đang trống. Hãy vẽ thử một hình trước khi đồng bộ!")
-
-    col_r1, col_r2 = st.columns([1, 1])
-    with col_r1:
-        if st.button("🔄 Tạo nhanh phòng Chữ Nhật", use_container_width=True):
-            st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0, 0], "Y": [0, 0, 10, 10, 0]})
-            st.rerun()
-    with col_r2:
-        if st.button("🔄 Tạo mẫu phòng Chữ L", use_container_width=True):
-            # Tạo mẫu phòng chữ L điển hình (15m x 15m khuyết góc)
-            st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 7, 7, 0, 0], "Y": [0, 0, 8, 8, 15, 15, 0]})
-            st.rerun()
-
-    st.caption("👇 Bảng tọa độ không gian thực (có thể chỉnh sửa thủ công nếu AI bắt điểm hơi lệch):")
-    edited_room = st.data_editor(st.session_state.room_data, num_rows="dynamic", use_container_width=True)
-    
+    # LIVE PREVIEW MẶT BẰNG
     if len(edited_room) >= 3:
-        room_poly = Polygon(list(zip(edited_room['X'], edited_room['Y'])))
+        room_coords = list(zip(edited_room['X'], edited_room['Y']))
+        room_poly = Polygon(room_coords)
+        
+        # Vẽ mô phỏng
+        fig_grid, ax_grid = plt.subplots(figsize=(6, 5))
+        x_ext, y_ext = room_poly.exterior.xy
+        ax_grid.plot(x_ext, y_ext, color='#333333', linewidth=2)
+        ax_grid.fill(x_ext, y_ext, alpha=0.1, color='blue')
+        
+        # Vật cản
+        for _, obs in st.session_state.obs_data.iterrows():
+            if obs['Type'] == 'Cylinder':
+                c = plt.Circle((obs['X'], obs['Y']), obs['Width_Radius'], color='gray', alpha=0.5)
+                ax_grid.add_patch(c)
+            elif obs['Type'] == 'Box':
+                w, l = obs['Width_Radius'], obs['Length']
+                box = Polygon([(obs['X']-w/2, obs['Y']-l/2), (obs['X']+w/2, obs['Y']-l/2),
+                               (obs['X']+w/2, obs['Y']+l/2), (obs['X']-w/2, obs['Y']+l/2)])
+                box = affinity.rotate(box, obs.get('Angle', 0), origin='center')
+                bx, by = box.exterior.xy
+                ax_grid.fill(bx, by, color='gray', alpha=0.5)
+                
+        # Đầu dò
+        valid_colors = mcolors.CSS4_COLORS
+        for _, det in st.session_state.det_data.iterrows():
+            c = det['Color'].lower()
+            use_c = c if c in valid_colors else 'blue'
+            ax_grid.plot(det['X'], det['Y'], '^', color=use_c, markersize=8, markeredgecolor='black')
+
+        ax_grid.set_aspect('equal')
+        ax_grid.grid(True, linestyle='--', alpha=0.5)
+        st.pyplot(fig_grid)
     else:
         st.error("Phòng cần ít nhất 3 góc (tọa độ)!")
         room_poly = None
+
+
+# ==========================================
+# (GIỮ NGUYÊN TOÀN BỘ PHẦN 2, HÀM ĐỒ HỌA VÀ KẾT XUẤT NHƯ BẢN TRƯỚC)
+# ==========================================
 
 with col_input2:
     st.header("2. Cấu hình Thiết bị & Bố trí")
@@ -157,7 +167,6 @@ with col_input2:
                     for x in x_steps:
                         for y in y_steps:
                             pt = Point(x, y)
-                            # ĐIỂM CHỐT AI: Chỉ rải nếu điểm x, y thực sự nằm "Bên Trong" phòng đa giác
                             if room_poly.contains(pt): 
                                 new_dets.append({
                                     "ID": f"{row_cfg['Model']} ({count:02d})", 
@@ -168,7 +177,7 @@ with col_input2:
                                 count += 1
                 
                 st.session_state.det_data = pd.DataFrame(new_dets)
-                st.success(f"Đã rải thành công {len(new_dets)} đầu dò. Lưới rải đã tự động tránh vùng khuyết của đa giác!")
+                st.success(f"Đã rải thành công {len(new_dets)} đầu dò!")
                 st.rerun()
 
     st.write("📋 **Bảng Tọa độ Đầu dò Thực tế (Chỉnh sửa thủ công nếu bị vướng):**")
@@ -179,11 +188,11 @@ with col_input2:
         }
     )
     st.session_state.det_data = edited_dets
+    if st.button("🔄 Cập nhật thay đổi", type="secondary"): st.rerun()
 
-
-# ==========================================
-# 2. CÁC HÀM LÕI TOÁN HỌC & ĐỒ HỌA
-# ==========================================
+# ------------------------------------------
+# HÀM XỬ LÝ (KHÔNG THAY ĐỔI)
+# ------------------------------------------
 def create_obstacle_polys(df_obs):
     obs_polys = []
     for _, row in df_obs.iterrows():
@@ -313,9 +322,6 @@ def generate_plotly_3d_complex(room_poly, rz, obs_polys, df_obs, df_dets):
     )
     return fig
 
-# ==========================================
-# 3. WORD REPORT (ĐA LỚP)
-# ==========================================
 def generate_word_report(figs_dict, img_3d_bytes):
     doc = Document()
     doc.add_heading('BÁO CÁO VÙNG PHỦ KHÍ ĐA LỚP (3D MAPPING)', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -387,11 +393,8 @@ if st.button("📊 Chạy Mô phỏng Kiến trúc Phức hợp & Tải Báo cá
                     st.download_button("📄 Tải Báo cáo Tư vấn Chuyên sâu (Word)", word_stream, "Bao_Cao_RikenViet.docx", type="primary")
 
         except Exception as e:
-            st.error(f"Lỗi hệ thống: {e}. Vui lòng kiểm tra lại nét vẽ hoặc thông số nhập liệu.")
+            st.error(f"Lỗi hệ thống: {e}. Vui lòng kiểm tra lại tọa độ đa giác hoặc thông số nhập liệu.")
 
-# ==========================================
-# 5. FOOTER (BẢN QUYỀN TÁC GIẢ)
-# ==========================================
 st.markdown("""
     <hr style="border: 0; height: 1px; background-image: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0)); margin-top: 50px;">
     <div style="text-align: center; color: #888888; font-size: 14px; padding-bottom: 20px;">
@@ -399,4 +402,3 @@ st.markdown("""
         Designed and programmed by <b>trggiang</b>.
     </div>
 """, unsafe_allow_html=True)
-
