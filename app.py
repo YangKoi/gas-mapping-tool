@@ -47,7 +47,7 @@ with col_input1:
     st.markdown("""
     **Mẹo vẽ chuẩn xác:** 1. Chọn công cụ vẽ Đa giác (Polygon) ở thanh công cụ bên trái.
     2. Click để chấm các góc tường. Đừng lo vẽ lệch, AI sẽ tự nắn thẳng.
-    3. 🚨 **LƯU Ý:** Để khép kín căn phòng, hãy **Click ĐÚP CHUỘT (Double-click)** ở điểm cuối cùng!
+    3. 🚨 **CÁCH CHỐT HÌNH:** Để khép kín phòng, hãy click chuột nối lại vào **ĐÚNG ĐIỂM XUẤT PHÁT ĐẦU TIÊN**, hoặc bấm phím **ESC** trên bàn phím! Đừng click đúp chuột nhé.
     """)
     
     canvas_w, canvas_h, grid_size = 600, 400, 20 # Quy ước: 20 pixels = 1 mét
@@ -399,3 +399,4 @@ st.markdown("""
         Designed and programmed by <b>trggiang</b>.
     </div>
 """, unsafe_allow_html=True)
+
