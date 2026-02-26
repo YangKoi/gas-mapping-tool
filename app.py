@@ -45,10 +45,8 @@ with col_input1:
     st.subheader("📐 Định hình Không gian (Parametric Builder)")
     st.markdown("Chọn biên dạng nhà xưởng và nhập kích thước, AI sẽ tự động dựng hình chính xác 100%.")
     
-    # Lựa chọn Template Hình dáng
     shape_type = st.radio("Chọn biên dạng:", ["Chữ Nhật 🟩", "Chữ L ▛", "Chữ U ⨆", "Tự do chỉnh tọa độ ✏️"], horizontal=True)
 
-    # Nạp dữ liệu kích thước theo Template
     if shape_type == "Chữ Nhật 🟩":
         c1, c2 = st.columns(2)
         l = c1.number_input("Chiều Dài (X)", value=15.0, step=1.0)
@@ -77,8 +75,7 @@ with col_input1:
             "Y": [0, 0, l_arms, l_arms, w_base, w_base, l_arms, l_arms]
         })
 
-    st.caption("👇 Bảng tọa độ toán học được AI sinh ra (chọn 'Tự do' để sửa tay):")
-    # Khóa bảng nếu đang dùng Template, chỉ mở nếu chọn "Tự do"
+    st.caption("👇 Bảng tọa độ không gian (Dòng số mấy tương ứng với góc chữ P đó trên bản vẽ):")
     is_disabled = shape_type != "Tự do chỉnh tọa độ ✏️"
     edited_room = st.data_editor(st.session_state.room_data, num_rows="dynamic", use_container_width=True, disabled=is_disabled)
     
@@ -87,11 +84,16 @@ with col_input1:
         room_coords = list(zip(edited_room['X'], edited_room['Y']))
         room_poly = Polygon(room_coords)
         
-        # Vẽ mô phỏng
         fig_grid, ax_grid = plt.subplots(figsize=(6, 5))
         x_ext, y_ext = room_poly.exterior.xy
         ax_grid.plot(x_ext, y_ext, color='#333333', linewidth=2)
         ax_grid.fill(x_ext, y_ext, alpha=0.1, color='blue')
+        
+        # ĐIỂM NÂNG CẤP: ĐÁNH DẤU TÊN TỪNG ĐỈNH BẰNG CHẤM ĐỎ VÀ CHỮ P0, P1...
+        for idx, row in edited_room.iterrows():
+            ax_grid.plot(row['X'], row['Y'], 'ro', markersize=6, zorder=10) # Chấm đỏ nổi bật
+            ax_grid.text(row['X'] + 0.3, row['Y'] + 0.3, f"P{idx}", color='red', fontweight='bold', fontsize=11, 
+                         bbox=dict(facecolor='white', alpha=0.8, edgecolor='red', pad=1.5), zorder=11)
         
         # Vật cản
         for _, obs in st.session_state.obs_data.iterrows():
@@ -120,10 +122,6 @@ with col_input1:
         st.error("Phòng cần ít nhất 3 góc (tọa độ)!")
         room_poly = None
 
-
-# ==========================================
-# (GIỮ NGUYÊN TOÀN BỘ PHẦN 2, HÀM ĐỒ HỌA VÀ KẾT XUẤT NHƯ BẢN TRƯỚC)
-# ==========================================
 
 with col_input2:
     st.header("2. Cấu hình Thiết bị & Bố trí")
@@ -191,7 +189,7 @@ with col_input2:
     if st.button("🔄 Cập nhật thay đổi", type="secondary"): st.rerun()
 
 # ------------------------------------------
-# HÀM XỬ LÝ (KHÔNG THAY ĐỔI)
+# HÀM XỬ LÝ TOÁN HỌC VÀ KẾT XUẤT ĐỒ HỌA
 # ------------------------------------------
 def create_obstacle_polys(df_obs):
     obs_polys = []
@@ -402,4 +400,3 @@ st.markdown("""
         Designed and programmed by <b>trggiang</b>.
     </div>
 """, unsafe_allow_html=True)
-
