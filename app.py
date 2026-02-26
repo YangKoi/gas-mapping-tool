@@ -21,7 +21,7 @@ st.set_page_config(page_title="Riken Viet - Enterprise Gas Mapping", layout="wid
 st.title("🛡️ Riken Viet - Hệ thống Thiết kế Vùng phủ Khí Đa lớp (3D)")
 
 if 'room_data' not in st.session_state:
-    st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0], "Y": [0, 0, 10, 10]}) 
+    st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0, 0], "Y": [0, 0, 10, 10, 0]}) 
 if 'obs_data' not in st.session_state:
     st.session_state.obs_data = pd.DataFrame([
         {"Type": "Cylinder", "X": 7.5, "Y": 5.0, "Width_Radius": 1.5, "Length": 0.0, "Height": 4.0, "Angle": 0}
@@ -45,56 +45,68 @@ with col_input1:
 
     st.subheader("🖍️ Bảng vẽ Mặt bằng (Auto-Snap)")
     st.markdown("""
-    **Mẹo vẽ chuẩn xác:** 1. Chọn công cụ vẽ Đa giác (Polygon) ở cột công cụ bên trái bảng vẽ.
-    2. Click để chấm các góc tường. Đừng lo vẽ lệch, AI sẽ tự nắn thẳng cho bạn.
-    3. 🚨 **QUAN TRỌNG:** Để khép kín phòng, hãy **Click ĐÚP CHUỘT (Double-click)** ở điểm cuối cùng!
+    **Mẹo vẽ chuẩn xác:** 1. Chọn công cụ vẽ Đa giác (Polygon) ở thanh công cụ bên trái.
+    2. Click để chấm các góc tường. Đừng lo vẽ lệch, AI sẽ tự nắn thẳng.
+    3. 🚨 **LƯU Ý:** Để khép kín căn phòng, hãy **Click ĐÚP CHUỘT (Double-click)** ở điểm cuối cùng!
     """)
     
     canvas_w, canvas_h, grid_size = 600, 400, 20 # Quy ước: 20 pixels = 1 mét
     
-    # Render Canvas với nền trơn (Tránh xung đột thư viện Streamlit mới nhất)
     canvas_result = st_canvas(
-        fill_color="rgba(0, 255, 150, 0.3)",  # Xanh lá trong suốt
+        fill_color="rgba(0, 255, 150, 0.3)",  
         stroke_width=3,
         stroke_color="#00FFAA",
-        background_color="#1E1E1E", # Dùng màu nền tối thay vì ảnh lưới
+        background_color="#1E1E1E", 
         height=canvas_h, width=canvas_w,
         drawing_mode="polygon",
         key="canvas",
     )
 
-    # Thuật toán Auto-Snap (Bắt điểm tự động)
-    if canvas_result.json_data is not None:
-        objects = canvas_result.json_data["objects"]
-        if len(objects) > 0:
-            last_obj = objects[-1]
-            if last_obj["type"] == "polygon":
-                pts = last_obj["points"]
-                min_x = min([p["x"] for p in pts])
-                min_y = min([p["y"] for p in pts])
-                
-                drawn_room = []
-                for p in pts:
-                    real_x = (p["x"] - min_x) / grid_size
-                    real_y = (p["y"] - min_y) / grid_size
+    # NÚT ĐỒNG BỘ NÉT VẼ
+    if st.button("📥 Bấm vào đây để Đồng bộ nét vẽ xuống Tọa độ", type="primary", use_container_width=True):
+        if canvas_result.json_data is not None:
+            objects = canvas_result.json_data["objects"]
+            if len(objects) > 0:
+                last_obj = objects[-1]
+                if "points" in last_obj:
+                    pts = last_obj["points"]
+                    drawn_room = []
+                    for p in pts:
+                        # Tọa độ tuyệt đối: Lấy vị trí click chia cho tỷ lệ mét
+                        real_x = p["x"] / grid_size
+                        real_y = p["y"] / grid_size
+                        
+                        # AUTO-SNAP: Nắn về bội số của 0.5m
+                        snap_x = round(real_x * 2) / 2
+                        snap_y = round(real_y * 2) / 2
+                        drawn_room.append({"X": snap_x, "Y": snap_y})
                     
-                    # AUTO-SNAP: Nắn tọa độ về bội số của 0.5m
-                    snap_x = round(real_x * 2) / 2
-                    snap_y = round(real_y * 2) / 2
-                    drawn_room.append({"X": snap_x, "Y": snap_y})
-                
-                df_drawn = pd.DataFrame(drawn_room)
-                df_drawn = df_drawn.loc[(df_drawn.shift() != df_drawn).any(axis=1)].reset_index(drop=True)
-                st.session_state.room_data = df_drawn
+                    # Tự động khép vòng tọa độ nếu điểm đầu khác điểm cuối
+                    if drawn_room[0] != drawn_room[-1]:
+                        drawn_room.append(drawn_room[0])
+                    
+                    df_drawn = pd.DataFrame(drawn_room)
+                    # Lọc các điểm click đúp trùng nhau
+                    df_drawn = df_drawn.loc[(df_drawn.shift() != df_drawn).any(axis=1)].reset_index(drop=True)
+                    st.session_state.room_data = df_drawn
+                    st.success(f"✅ Đã nhận diện thành công phòng đa giác với {len(df_drawn)-1} góc!")
+                else:
+                    st.error("Chưa nhận diện được hình khối. Nhớ 'Click đúp chuột' khi vẽ xong nhé!")
+            else:
+                st.warning("Bảng vẽ đang trống. Hãy vẽ thử một hình trước khi đồng bộ!")
 
-    st.caption("👇 Tọa độ đã được AI 'nắn thẳng' (Auto-Snap) dựa trên nét vẽ của bạn:")
-    
     col_r1, col_r2 = st.columns([1, 1])
     with col_r1:
-        if st.button("🔄 Tạo nhanh phòng Chữ Nhật 15x10", use_container_width=True):
-            st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0], "Y": [0, 0, 10, 10]})
+        if st.button("🔄 Tạo nhanh phòng Chữ Nhật", use_container_width=True):
+            st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0, 0], "Y": [0, 0, 10, 10, 0]})
+            st.rerun()
+    with col_r2:
+        if st.button("🔄 Tạo mẫu phòng Chữ L", use_container_width=True):
+            # Tạo mẫu phòng chữ L điển hình (15m x 15m khuyết góc)
+            st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 7, 7, 0, 0], "Y": [0, 0, 8, 8, 15, 15, 0]})
             st.rerun()
 
+    st.caption("👇 Bảng tọa độ không gian thực (có thể chỉnh sửa thủ công nếu AI bắt điểm hơi lệch):")
     edited_room = st.data_editor(st.session_state.room_data, num_rows="dynamic", use_container_width=True)
     
     if len(edited_room) >= 3:
@@ -145,6 +157,7 @@ with col_input2:
                     for x in x_steps:
                         for y in y_steps:
                             pt = Point(x, y)
+                            # ĐIỂM CHỐT AI: Chỉ rải nếu điểm x, y thực sự nằm "Bên Trong" phòng đa giác
                             if room_poly.contains(pt): 
                                 new_dets.append({
                                     "ID": f"{row_cfg['Model']} ({count:02d})", 
@@ -155,7 +168,7 @@ with col_input2:
                                 count += 1
                 
                 st.session_state.det_data = pd.DataFrame(new_dets)
-                st.success(f"Đã rải thành công {len(new_dets)} đầu dò!")
+                st.success(f"Đã rải thành công {len(new_dets)} đầu dò. Lưới rải đã tự động tránh vùng khuyết của đa giác!")
                 st.rerun()
 
     st.write("📋 **Bảng Tọa độ Đầu dò Thực tế (Chỉnh sửa thủ công nếu bị vướng):**")
@@ -374,7 +387,7 @@ if st.button("📊 Chạy Mô phỏng Kiến trúc Phức hợp & Tải Báo cá
                     st.download_button("📄 Tải Báo cáo Tư vấn Chuyên sâu (Word)", word_stream, "Bao_Cao_RikenViet.docx", type="primary")
 
         except Exception as e:
-            st.error(f"Lỗi hệ thống: {e}. Vui lòng kiểm tra lại tọa độ đa giác hoặc thông số nhập liệu.")
+            st.error(f"Lỗi hệ thống: {e}. Vui lòng kiểm tra lại nét vẽ hoặc thông số nhập liệu.")
 
 # ==========================================
 # 5. FOOTER (BẢN QUYỀN TÁC GIẢ)
