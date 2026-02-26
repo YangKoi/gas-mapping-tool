@@ -6,10 +6,10 @@ import plotly.graph_objects as go
 import matplotlib.colors as mcolors
 import math
 import io
-from docx import Document
-from docx.shared import Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+import os
 
+from docxtpl import DocxTemplate, InlineImage
+from docx.shared import Inches
 from shapely.geometry import Point, LineString, Polygon
 import shapely.affinity as affinity
 from matplotlib.path import Path
@@ -18,7 +18,7 @@ from matplotlib.path import Path
 # CẤU HÌNH TRANG WEB & STATE
 # ==========================================
 st.set_page_config(page_title="Riken Viet - Enterprise Gas Mapping", layout="wide")
-st.title("🛡️ Riken Viet - Hệ thống Thiết kế & Mô phỏng vùng phủ khí đa lớp (3D) - Beta")
+st.title("🛡️ Riken Viet - Hệ thống Thiết kế & Dự toán Vùng phủ Khí")
 
 if 'room_data' not in st.session_state:
     st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0], "Y": [0, 0, 10, 10]}) 
@@ -35,7 +35,7 @@ if 'det_data' not in st.session_state:
     st.session_state.det_data = pd.DataFrame(columns=["ID", "Model", "Gas", "X", "Y", "Z", "Radius", "Color"])
 
 # ==========================================
-# 1. GIAO DIỆN NHẬP LIỆU (KHÔNG GIAN & THIẾT BỊ)
+# 1. GIAO DIỆN NHẬP LIỆU
 # ==========================================
 col_input1, col_input2 = st.columns([1.2, 1.1])
 
@@ -43,12 +43,11 @@ with col_input1:
     st.header("1. Không gian & Tủ Trung Tâm")
     room_z = st.number_input("Chiều cao trần nhà xưởng (Z) - mét", min_value=1.0, value=5.0)
 
-    # ĐIỂM NÂNG CẤP LỚN: KHAI BÁO VỊ TRÍ TỦ TRUNG TÂM ĐỂ TÍNH CÁP
     st.subheader("🎛️ Vị trí Tủ Điều Khiển & Hao hụt")
     col_p1, col_p2, col_p3 = st.columns(3)
     panel_x = col_p1.number_input("Tọa độ X (Tủ)", value=0.0)
     panel_y = col_p2.number_input("Tọa độ Y (Tủ)", value=0.0)
-    panel_z = col_p3.number_input("Cao độ Z (Tủ)", value=1.5, help="Độ cao treo tủ trung tâm (thường ngang tầm mắt)")
+    panel_z = col_p3.number_input("Cao độ Z (Tủ)", value=1.5)
     wastage_percent = st.number_input("Hệ số hao hụt cáp thi công (%)", min_value=0, value=20, step=5)
 
     st.subheader("📐 Định hình Không gian")
@@ -68,7 +67,6 @@ with col_input1:
 
     edited_room = st.data_editor(st.session_state.room_data, num_rows="dynamic", use_container_width=True)
     
-    # VẼ MẶT BẰNG PREVIEW
     if len(edited_room) >= 3:
         room_coords = list(zip(edited_room['X'], edited_room['Y']))
         room_poly = Polygon(room_coords)
@@ -82,7 +80,6 @@ with col_input1:
             ax_grid.plot(row['X'], row['Y'], 'ro', markersize=6, zorder=10)
             ax_grid.text(row['X'] + 0.3, row['Y'] + 0.3, f"P{idx}", color='red', fontweight='bold', fontsize=11, zorder=11)
         
-        # Vẽ Tủ trung tâm lên bản vẽ 2D Preview
         ax_grid.plot(panel_x, panel_y, 's', color='red', markersize=12, markeredgecolor='black', zorder=12)
         ax_grid.text(panel_x + 0.5, panel_y + 0.5, "TỦ TT", color='red', fontweight='bold', zorder=12)
 
@@ -165,15 +162,26 @@ with col_input2:
     edited_dets = st.data_editor(st.session_state.det_data, num_rows="dynamic", use_container_width=True)
     st.session_state.det_data = edited_dets
 
-
 # ==========================================
-# 3. TÍNH TOÁN BÓC TÁCH KHỐI LƯỢNG (BOM) KỸ THUẬT
+# THÔNG TIN DỰ ÁN CHO TEMPLATE WORD
 # ==========================================
 st.markdown("---")
-st.header("3. 📋 Bảng Bóc tách Khối lượng Vật tư (BOM)")
+st.header("3. 📝 Thông tin Dự án & BOM")
+col_info1, col_info2, col_info3 = st.columns([1, 1, 1])
 
+with col_info1:
+    project_name = st.text_input("Tên Dự án / Gói thầu", value="Thiết kế Hệ thống Giám sát Rò rỉ Khí")
+    author_name = st.text_input("Người lập báo cáo", value="Cao Minh Lợi - Giám đốc Kỹ thuật")
+with col_info2:
+    client_name = st.text_input("Đơn vị / Khách hàng", value="Nhà máy ABC")
+    report_date = st.date_input("Ngày lập báo cáo")
+with col_info3:
+    # ĐIỂM CẬP NHẬT: Thêm trường nhập Số Báo cáo
+    report_number = st.text_input("Số Báo cáo (No.)", value="RKV_TE_001/BC", help="Chỉnh sửa số đuôi theo từng dự án")
+
+# TÍNH TOÁN BOM KỸ THUẬT
 bom_items = []
-bom_items.append({"STT": 1, "Hạng mục thiết bị": "Tủ điều khiển trung tâm đo khí (Control Panel)", "Đơn vị": "Bộ", "Khối lượng": 1})
+bom_items.append({"STT": 1, "Hạng mục thiết bị": "Tủ điều khiển trung tâm đo khí", "Đơn vị": "Bộ", "Khối lượng": 1})
 
 stt = 2
 total_cable_length = 0
@@ -184,26 +192,20 @@ if not edited_dets.empty and 'Model' in edited_dets.columns:
         bom_items.append({"STT": stt, "Hạng mục thiết bị": f"Đầu dò đo khí rò rỉ - Model: {model}", "Đơn vị": "Bộ", "Khối lượng": qty})
         stt += 1
     
-    # THUẬT TOÁN TÍNH CÁP ĐI TRẦN THỰC TẾ
     for _, d in edited_dets.iterrows():
-        # 1. Từ Tủ đi lên trần: abs(room_z - panel_z)
-        # 2. Đi ngang trên trần vuông góc đến vị trí đầu dò: abs(X_det - X_panel) + abs(Y_det - Y_panel)
-        # 3. Từ trần thả dây dọc xuống đầu dò: abs(room_z - Z_det)
         cable_up = abs(room_z - panel_z)
         cable_horizontal = abs(d['X'] - panel_x) + abs(d['Y'] - panel_y)
         cable_down = abs(room_z - d['Z'])
         total_cable_length += (cable_up + cable_horizontal + cable_down)
         
-    # Nhân hệ số hao hụt thi công
     total_cable_length = math.ceil(total_cable_length * (1 + wastage_percent / 100))
 else:
     total_cable_length = 0
 
 bom_items.append({"STT": stt, "Hạng mục thiết bị": "Cáp tín hiệu chống nhiễu chuyên dụng", "Đơn vị": "Mét", "Khối lượng": total_cable_length})
 stt += 1
-bom_items.append({"STT": stt, "Hạng mục thiết bị": "Chuông đèn cảnh báo chớp nháy (Siren/Light)", "Đơn vị": "Bộ", "Khối lượng": len(edited_dets) if not edited_dets.empty else 1})
+bom_items.append({"STT": stt, "Hạng mục thiết bị": "Chuông đèn cảnh báo (Siren/Light)", "Đơn vị": "Bộ", "Khối lượng": len(edited_dets) if not edited_dets.empty else 1})
 
-# Hiển thị bảng thuần Khối lượng (Không Giá)
 edited_bom = st.data_editor(pd.DataFrame(bom_items), use_container_width=True, hide_index=True)
 
 
@@ -273,7 +275,6 @@ def generate_2d_plot(room_poly, obs_polys, df_dets_group, gas_name, px, py):
     rx, ry = room_poly.exterior.xy
     ax.plot(rx, ry, 'k-', lw=3, zorder=2)
     
-    # Đánh dấu tủ
     ax.plot(px, py, 's', color='red', markersize=12, markeredgecolor='black', zorder=5)
     ax.text(px + 0.3, py + 0.3, "Control Panel", color='red', fontweight='bold', zorder=6, bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=1))
 
@@ -303,7 +304,6 @@ def generate_plotly_3d_complex(room_poly, rz, obs_polys, df_obs, df_dets, px, py
     for x, y in zip(rx[:-1], ry[:-1]):
         fig.add_trace(go.Scatter3d(x=[x,x], y=[y,y], z=[0,rz], mode='lines', line=dict(color='white', width=2), showlegend=False))
 
-    # Tủ TT 3D
     fig.add_trace(go.Scatter3d(x=[px], y=[py], z=[pz], mode='markers+text', 
                                marker=dict(symbol='square', size=8, color='red'), 
                                text=["TỦ TRUNG TÂM"], textposition="top center", textfont=dict(color="red", size=12, weight="bold"), name="Control Panel"))
@@ -348,61 +348,61 @@ def generate_plotly_3d_complex(room_poly, rz, obs_polys, df_obs, df_dets, px, py
     )
     return fig
 
-def generate_word_report(figs_dict, img_3d_bytes, bom_df):
-    doc = Document()
-    doc.add_heading('BÁO CÁO THIẾT KẾ & BÓC TÁCH VẬT TƯ (BOM)', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph('Đơn vị thực hiện: CÔNG TY TNHH CÔNG NGHỆ THIẾT BỊ DÒ KHÍ RIKEN VIET').bold = True
-    doc.add_paragraph('_' * 60)
+# CÔNG NGHỆ TEMPLATE DOCXTPL
+def generate_word_template(template_path, figs_dict, img_3d_bytes, bom_df, p_name, c_name, author, r_date, r_num):
+    doc = DocxTemplate(template_path)
     
-    # 1. BẢNG BOM CHUYÊN NGHIỆP
-    doc.add_heading('1. Bảng Tổng hợp Khối lượng Kỹ thuật', level=1)
-    table = doc.add_table(rows=1, cols=4)
-    table.style = 'Table Grid'
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'STT'
-    hdr_cells[1].text = 'Hạng mục Thiết bị & Vật tư'
-    hdr_cells[2].text = 'Đơn vị'
-    hdr_cells[3].text = 'Khối lượng'
-    
-    # Chỉnh in đậm tiêu đề
-    for cell in hdr_cells:
-        for paragraph in cell.paragraphs:
-            for run in paragraph.runs: run.font.bold = True
-    
-    for _, row in bom_df.iterrows():
-        row_cells = table.add_row().cells
-        row_cells[0].text = str(row['STT'])
-        row_cells[1].text = str(row['Hạng mục thiết bị'])
-        row_cells[2].text = str(row['Đơn vị'])
-        row_cells[3].text = f"{int(row['Khối lượng']):,}"
-        
-    doc.add_paragraph()
-    
-    doc.add_heading('2. Phân bổ Không gian 3D Tổng thể', level=1)
+    img_3d_obj = None
     if img_3d_bytes:
-        doc.add_picture(img_3d_bytes, width=Inches(6.0))
-        doc.add_paragraph('Hình 1: Sơ đồ vị trí thiết bị, tủ trung tâm và vật cản.').alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    doc.add_heading('3. Phân tích Điểm mù theo Phân hệ Khí', level=1)
-    for gas_name, fig in figs_dict.items():
-        doc.add_heading(f'Bản đồ giám sát: {gas_name}', level=2)
+        img_3d_obj = InlineImage(doc, img_3d_bytes, width=Inches(6.0))
+        
+    bom_list = []
+    for _, row in bom_df.iterrows():
+        bom_list.append({
+            'stt': row['STT'],
+            'name': row['Hạng mục thiết bị'],
+            'unit': row['Đơn vị'],
+            'qty': f"{int(row['Khối lượng']):,}"
+        })
+        
+    gas_maps_list = []
+    for gas_name, fig_info in figs_dict.items():
         img_stream = io.BytesIO()
-        fig.savefig(img_stream, format='png', bbox_inches='tight', dpi=150)
+        fig_info['fig'].savefig(img_stream, format='png', bbox_inches='tight', dpi=150)
         img_stream.seek(0)
-        doc.add_picture(img_stream, width=Inches(6.0))
-        doc.add_paragraph(f'Hình mô phỏng giao thoa bảo vệ của hệ thống {gas_name}.').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        gas_maps_list.append({
+            'gas_name': gas_name,
+            'coverage': f"{fig_info['coverage']:.1f}",
+            'img_2d': InlineImage(doc, img_stream, width=Inches(6.0))
+        })
+        
+    # ĐIỂM CẬP NHẬT: Nhồi biến report_number vào Template
+    context = {
+        'report_number': r_num,
+        'project_name': p_name.upper(),
+        'client_name': c_name,
+        'author_name': author,
+        'report_date': r_date.strftime('%d/%m/%Y'),
+        'img_3d': img_3d_obj,
+        'bom_items': bom_list,
+        'gas_maps': gas_maps_list
+    }
     
-    doc_stream = io.BytesIO()
-    doc.save(doc_stream)
-    doc_stream.seek(0)
-    return doc_stream
+    doc.render(context)
+    output_stream = io.BytesIO()
+    doc.save(output_stream)
+    output_stream.seek(0)
+    return output_stream
+
 
 # ==========================================
 # 5. TRIGGER KẾT XUẤT
 # ==========================================
 st.markdown("---")
-if st.button("📊 Chạy Mô phỏng Đồ họa & Tải Báo cáo Bóc Tách", use_container_width=True, type='primary'):
-    if room_poly is None or edited_dets.empty:
+if st.button("📊 Chạy Mô phỏng Đồ họa & Tải Báo cáo Kỹ thuật", use_container_width=True, type='primary'):
+    if not os.path.exists("Mau_Bao_Cao.docx"):
+        st.error("🚨 Lỗi: Hệ thống không tìm thấy file `Mau_Bao_Cao.docx`. Vui lòng tạo file mẫu và tải lên kho GitHub của bạn trước khi xuất báo cáo!")
+    elif room_poly is None or edited_dets.empty:
         st.warning("⚠️ Vui lòng nhập đủ tọa độ phòng và danh sách đầu dò!")
     else:
         try:
@@ -412,7 +412,7 @@ if st.button("📊 Chạy Mô phỏng Đồ họa & Tải Báo cáo Bóc Tách",
             if collided:
                 st.error(f"⛔ LỖI VA CHẠM: Đầu dò **{', '.join(collided)}** đang bị đặt nằm bên trong vật cản! Vui lòng chỉnh lại tọa độ.")
             else:
-                with st.spinner('Đang nội suy đường cáp, phân tích raycasting và kết xuất tài liệu...'):
+                with st.spinner('Đang nhúng dữ liệu và hình ảnh AI vào Template Riken Viet...'):
                     st.header("4. Phân tích Kết quả Đồ họa")
                     
                     fig_3d = generate_plotly_3d_complex(room_poly, room_z, obs_polys, edited_obs, edited_dets, panel_x, panel_y, panel_z)
@@ -426,7 +426,7 @@ if st.button("📊 Chạy Mô phỏng Đồ họa & Tải Báo cáo Bóc Tách",
 
                     gas_groups = edited_dets['Gas'].unique()
                     tabs = st.tabs([f"Bản đồ: {g}" for g in gas_groups])
-                    generated_figs = {}
+                    generated_figs = {} 
                     
                     for i, gas_name in enumerate(gas_groups):
                         with tabs[i]:
@@ -437,11 +437,11 @@ if st.button("📊 Chạy Mô phỏng Đồ họa & Tải Báo cáo Bóc Tách",
                                 st.success(f"✅ Tỷ lệ bao phủ của {gas_name} đạt chuẩn: {coverage:.1f}%")
                             else:
                                 st.warning(f"⚠️ Tỷ lệ bao phủ của {gas_name} chỉ đạt: {coverage:.1f}%")
-                            generated_figs[gas_name] = fig_2d
+                            generated_figs[gas_name] = {'fig': fig_2d, 'coverage': coverage}
                     
-                    # XUẤT WORD KÈM BẢNG BOM CHUYÊN NGHIỆP
-                    word_stream = generate_word_report(generated_figs, img_3d_bytes, edited_bom)
-                    st.download_button("📄 Tải Báo cáo Thiết kế & Bóc Tách BOM (Word)", word_stream, "Bao_Cao_BOM_RikenViet.docx", type="primary")
+                    # Gọi hàm với tham số số báo cáo
+                    word_stream = generate_word_template("Mau_Bao_Cao.docx", generated_figs, img_3d_bytes, edited_bom, project_name, client_name, author_name, report_date, report_number)
+                    st.download_button("📄 Tải Báo cáo chuẩn Form Công ty", word_stream, f"{report_number.replace('/','_')}_{client_name}.docx", type="primary")
 
         except Exception as e:
             st.error(f"Lỗi hệ thống: {e}. Vui lòng kiểm tra lại thông số nhập liệu.")
@@ -453,4 +453,3 @@ st.markdown("""
         Designed and programmed by <b>trggiang</b>.
     </div>
 """, unsafe_allow_html=True)
-
