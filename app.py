@@ -9,15 +9,16 @@ import io
 from docx import Document
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+
 from shapely.geometry import Point, LineString, Polygon
 import shapely.affinity as affinity
 from matplotlib.path import Path
 
 # ==========================================
-# CẤU HÌNH TRANG WEB
+# CẤU HÌNH TRANG WEB & STATE
 # ==========================================
 st.set_page_config(page_title="Riken Viet - Enterprise Gas Mapping", layout="wide")
-st.title("🛡️ Riken Viet - Hệ thống Thiết kế Vùng phủ Khí Đa lớp (3D) - Beta")
+st.title("🛡️ Riken Viet - Hệ thống Thiết kế & Dự toán Vùng phủ Khí")
 
 if 'room_data' not in st.session_state:
     st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0], "Y": [0, 0, 10, 10]}) 
@@ -30,56 +31,41 @@ if 'auto_config' not in st.session_state:
         {"Target Gas": "CH4", "Layer": "Khí Nhẹ (Sát trần)", "Model": "SD-1 (Catalytic)", "Radius": 5.0, "Color": "cyan"},
         {"Target Gas": "H2S", "Layer": "Khí Nặng (Sát sàn)", "Model": "GD-70D (Electro)", "Radius": 4.0, "Color": "magenta"}
     ])
+# CẬP NHẬT: Thêm cột 'Model' riêng để dễ bóc tách BOM
 if 'det_data' not in st.session_state:
-    st.session_state.det_data = pd.DataFrame(columns=["ID", "Gas", "X", "Y", "Z", "Radius", "Color"])
+    st.session_state.det_data = pd.DataFrame(columns=["ID", "Model", "Gas", "X", "Y", "Z", "Radius", "Color"])
 
 # ==========================================
-# 1. GIAO DIỆN NHẬP LIỆU: THIẾT KẾ THAM SỐ (PARAMETRIC)
+# 1. GIAO DIỆN NHẬP LIỆU
 # ==========================================
-col_input1, col_input2 = st.columns([1.2, 1])
+col_input1, col_input2 = st.columns([1.2, 1.1])
 
 with col_input1:
     st.header("1. Kiến trúc Phòng Không gian")
     room_z = st.number_input("Chiều cao trần (Z) - mét", min_value=1.0, value=5.0)
 
-    st.subheader("📐 Định hình Không gian (Parametric Builder)")
-    st.markdown("Chọn biên dạng nhà xưởng và nhập kích thước, AI sẽ tự động dựng hình chính xác 100%.")
+    st.subheader("📐 Sinh tự động & Chỉnh sửa Không gian")
+    st.markdown("Chọn mẫu nhà xưởng, sau đó bạn **hoàn toàn có thể sửa tay** tọa độ trong bảng bên dưới.")
     
-    shape_type = st.radio("Chọn biên dạng:", ["Chữ Nhật 🟩", "Chữ L ▛", "Chữ U ⨆", "Tự do chỉnh tọa độ ✏️"], horizontal=True)
+    # ĐÃ SỬA: Dùng Button thay vì Radio để không bị khóa bảng Data Editor
+    col_t1, col_t2, col_t3 = st.columns(3)
+    with col_t1:
+        if st.button("🟩 Mẫu Chữ Nhật", use_container_width=True):
+            st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0], "Y": [0, 0, 10, 10]})
+            st.rerun()
+    with col_t2:
+        if st.button("▛ Mẫu Chữ L", use_container_width=True):
+            st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 6, 6, 0], "Y": [0, 0, 6, 6, 12, 12]})
+            st.rerun()
+    with col_t3:
+        if st.button("⨆ Mẫu Chữ U", use_container_width=True):
+            st.session_state.room_data = pd.DataFrame({"X": [0, 20, 20, 15, 15, 5, 5, 0], "Y": [0, 0, 15, 15, 5, 5, 15, 15]})
+            st.rerun()
 
-    if shape_type == "Chữ Nhật 🟩":
-        c1, c2 = st.columns(2)
-        l = c1.number_input("Chiều Dài (X)", value=15.0, step=1.0)
-        w = c2.number_input("Chiều Rộng (Y)", value=10.0, step=1.0)
-        st.session_state.room_data = pd.DataFrame({"X": [0, l, l, 0], "Y": [0, 0, w, w]})
-
-    elif shape_type == "Chữ L ▛":
-        c1, c2 = st.columns(2)
-        l_base = c1.number_input("Chiều dài đáy ngang", value=15.0, step=1.0)
-        w_base = c2.number_input("Bề dày đáy ngang", value=6.0, step=1.0)
-        l_arm = c1.number_input("Chiều cao nhánh đứng", value=12.0, step=1.0)
-        w_arm = c2.number_input("Bề dày nhánh đứng", value=5.0, step=1.0)
-        st.session_state.room_data = pd.DataFrame({
-            "X": [0, l_base, l_base, w_arm, w_arm, 0],
-            "Y": [0, 0, w_base, w_base, l_arm, l_arm]
-        })
-
-    elif shape_type == "Chữ U ⨆":
-        c1, c2, c3 = st.columns(3)
-        l_base = c1.number_input("Chiều dài đáy", value=20.0, step=1.0)
-        w_base = c1.number_input("Bề dày đáy", value=5.0, step=1.0)
-        l_arms = c2.number_input("Chiều cao 2 nhánh", value=15.0, step=1.0)
-        w_arms = c3.number_input("Bề dày nhánh", value=5.0, step=1.0)
-        st.session_state.room_data = pd.DataFrame({
-            "X": [0, l_base, l_base, l_base-w_arms, l_base-w_arms, w_arms, w_arms, 0],
-            "Y": [0, 0, l_arms, l_arms, w_base, w_base, l_arms, l_arms]
-        })
-
-    st.caption("👇 Bảng tọa độ không gian (Dòng số mấy tương ứng với góc chữ P đó trên bản vẽ):")
-    is_disabled = shape_type != "Tự do chỉnh tọa độ ✏️"
-    edited_room = st.data_editor(st.session_state.room_data, num_rows="dynamic", use_container_width=True, disabled=is_disabled)
+    st.caption("👇 Bảng tọa độ (Dòng số mấy tương ứng với góc P đó trên bản vẽ):")
+    edited_room = st.data_editor(st.session_state.room_data, num_rows="dynamic", use_container_width=True) # Đã bỏ disabled
     
-    # LIVE PREVIEW MẶT BẰNG
+    # VẼ MẶT BẰNG & ĐÁNH DẤU ĐỈNH
     if len(edited_room) >= 3:
         room_coords = list(zip(edited_room['X'], edited_room['Y']))
         room_poly = Polygon(room_coords)
@@ -89,13 +75,12 @@ with col_input1:
         ax_grid.plot(x_ext, y_ext, color='#333333', linewidth=2)
         ax_grid.fill(x_ext, y_ext, alpha=0.1, color='blue')
         
-        # ĐIỂM NÂNG CẤP: ĐÁNH DẤU TÊN TỪNG ĐỈNH BẰNG CHẤM ĐỎ VÀ CHỮ P0, P1...
+        # Đánh dấu đỉnh P0, P1...
         for idx, row in edited_room.iterrows():
-            ax_grid.plot(row['X'], row['Y'], 'ro', markersize=6, zorder=10) # Chấm đỏ nổi bật
+            ax_grid.plot(row['X'], row['Y'], 'ro', markersize=6, zorder=10)
             ax_grid.text(row['X'] + 0.3, row['Y'] + 0.3, f"P{idx}", color='red', fontweight='bold', fontsize=11, 
                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='red', pad=1.5), zorder=11)
         
-        # Vật cản
         for _, obs in st.session_state.obs_data.iterrows():
             if obs['Type'] == 'Cylinder':
                 c = plt.Circle((obs['X'], obs['Y']), obs['Width_Radius'], color='gray', alpha=0.5)
@@ -108,7 +93,6 @@ with col_input1:
                 bx, by = box.exterior.xy
                 ax_grid.fill(bx, by, color='gray', alpha=0.5)
                 
-        # Đầu dò
         valid_colors = mcolors.CSS4_COLORS
         for _, det in st.session_state.det_data.iterrows():
             c = det['Color'].lower()
@@ -122,31 +106,24 @@ with col_input1:
         st.error("Phòng cần ít nhất 3 góc (tọa độ)!")
         room_poly = None
 
-
 with col_input2:
-    st.header("2. Cấu hình Thiết bị & Bố trí")
+    st.header("2. Bố trí Thiết bị & BOM")
     
     with st.expander("🚧 Danh sách Vật cản (Cylinder / Box)", expanded=True):
-        edited_obs = st.data_editor(
-            st.session_state.obs_data, num_rows="dynamic", use_container_width=True,
-            column_config={"Type": st.column_config.SelectboxColumn("Loại", options=["Cylinder", "Box"])}
-        )
+        edited_obs = st.data_editor(st.session_state.obs_data, num_rows="dynamic", use_container_width=True,
+                                    column_config={"Type": st.column_config.SelectboxColumn("Loại", options=["Cylinder", "Box"])})
         st.session_state.obs_data = edited_obs
 
-    with st.expander("⚙️ Thiết lập Các Phân hệ Khí (Bấm '+' để thêm)", expanded=True):
-        edited_auto_config = st.data_editor(
-            st.session_state.auto_config, num_rows="dynamic", use_container_width=True,
+    with st.expander("⚙️ Thiết lập Các Phân hệ Khí", expanded=True):
+        edited_auto_config = st.data_editor(st.session_state.auto_config, num_rows="dynamic", use_container_width=True,
             column_config={
                 "Layer": st.column_config.SelectboxColumn("Mặt phẳng", options=["Khí Nhẹ (Sát trần)", "Khí Trung bình (Vùng thở)", "Khí Nặng (Sát sàn)"]),
                 "Color": st.column_config.SelectboxColumn("Màu bản đồ", options=["cyan", "magenta", "yellow", "lime", "red", "blue", "orange"])
-            }
-        )
+            })
         st.session_state.auto_config = edited_auto_config
 
-        if st.button("🚀 Tự động Rải Đầu dò theo Bảng cấu hình trên", type="primary"):
-            if edited_auto_config.empty:
-                st.warning("Vui lòng thiết lập ít nhất 1 loại khí!")
-            elif room_poly is not None:
+        if st.button("🚀 Tự động Rải Đầu dò", type="primary"):
+            if room_poly is not None:
                 new_dets = []
                 for _, row_cfg in edited_auto_config.iterrows():
                     if "Nhẹ" in row_cfg["Layer"]: z_val = max(room_z - 0.5, 0.5)
@@ -168,6 +145,7 @@ with col_input2:
                             if room_poly.contains(pt): 
                                 new_dets.append({
                                     "ID": f"{row_cfg['Model']} ({count:02d})", 
+                                    "Model": row_cfg['Model'], # Cột ẩn dùng cho BOM
                                     "Gas": f"{row_cfg['Target Gas']} ({row_cfg['Layer'].split(' ')[1]})", 
                                     "X": round(x, 1), "Y": round(y, 1),
                                     "Z": z_val, "Radius": row_cfg["Radius"], "Color": row_cfg["Color"]
@@ -178,19 +156,48 @@ with col_input2:
                 st.success(f"Đã rải thành công {len(new_dets)} đầu dò!")
                 st.rerun()
 
-    st.write("📋 **Bảng Tọa độ Đầu dò Thực tế (Chỉnh sửa thủ công nếu bị vướng):**")
-    edited_dets = st.data_editor(
-        st.session_state.det_data, num_rows="dynamic", use_container_width=True,
-        column_config={
-            "Color": st.column_config.SelectboxColumn("Màu", options=["cyan", "magenta", "yellow", "lime", "red", "white", "blue", "orange"])
-        }
-    )
+    st.write("📋 **Bảng Tọa độ Thực tế:**")
+    edited_dets = st.data_editor(st.session_state.det_data, num_rows="dynamic", use_container_width=True)
     st.session_state.det_data = edited_dets
-    if st.button("🔄 Cập nhật thay đổi", type="secondary"): st.rerun()
 
-# ------------------------------------------
-# HÀM XỬ LÝ TOÁN HỌC VÀ KẾT XUẤT ĐỒ HỌA
-# ------------------------------------------
+# ==========================================
+# 3. TÍNH TOÁN BÓC TÁCH KHỐI LƯỢNG (BOM)
+# ==========================================
+st.markdown("---")
+st.header("3. 💰 Dự toán Khối lượng (Bill of Materials)")
+st.info("Hệ thống tự động tính toán số lượng thiết bị và dự phóng số mét Cáp tín hiệu dựa trên tọa độ mặt bằng. Bạn có thể sửa Đơn giá.")
+
+bom_items = []
+bom_items.append({"STT": 1, "Hạng mục": "Tủ điều khiển trung tâm (Control Panel)", "Số lượng": 1, "Đơn giá (VNĐ)": 25000000})
+
+stt = 2
+total_cable_length = 0
+
+if not edited_dets.empty and 'Model' in edited_dets.columns:
+    # Gom nhóm theo Model để đếm số lượng
+    counts = edited_dets['Model'].value_counts()
+    for model, qty in counts.items():
+        bom_items.append({"STT": stt, "Hạng mục": f"Đầu dò khí rò rỉ - Model: {model}", "Số lượng": qty, "Đơn giá (VNĐ)": 15000000})
+        stt += 1
+    
+    # Tính toán dây cáp tự động (Khoảng cách Manhattan từ góc tủ (0,0) đến các đầu dò + 20% hao hụt)
+    for _, d in edited_dets.iterrows():
+        total_cable_length += (abs(d['X']) + abs(d['Y']) + abs(d['Z'])) * 1.2
+    total_cable_length = round(total_cable_length)
+else:
+    total_cable_length = 100
+
+bom_items.append({"STT": stt, "Hạng mục": "Cáp tín hiệu chống nhiễu (mét)", "Số lượng": total_cable_length, "Đơn giá (VNĐ)": 15000})
+stt += 1
+bom_items.append({"STT": stt, "Hạng mục": "Chuông đèn cảnh báo (Siren/Light)", "Số lượng": len(edited_dets) if not edited_dets.empty else 1, "Đơn giá (VNĐ)": 1500000})
+
+# Cho phép user chỉnh sửa trực tiếp bảng BOM trên Web
+edited_bom = st.data_editor(pd.DataFrame(bom_items), use_container_width=True, hide_index=True)
+
+
+# ==========================================
+# 4. CÁC HÀM LÕI TOÁN HỌC & ĐỒ HỌA
+# ==========================================
 def create_obstacle_polys(df_obs):
     obs_polys = []
     for _, row in df_obs.iterrows():
@@ -320,18 +327,55 @@ def generate_plotly_3d_complex(room_poly, rz, obs_polys, df_obs, df_dets):
     )
     return fig
 
-def generate_word_report(figs_dict, img_3d_bytes):
+# CẬP NHẬT: GHI BẢNG BÁO GIÁ (BOM) VÀO WORD
+def generate_word_report(figs_dict, img_3d_bytes, bom_df):
     doc = Document()
-    doc.add_heading('BÁO CÁO VÙNG PHỦ KHÍ ĐA LỚP (3D MAPPING)', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_heading('BÁO CÁO KỸ THUẬT & DỰ TOÁN HỆ THỐNG ĐO KHÍ', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph('Đơn vị thực hiện: CÔNG TY TNHH CÔNG NGHỆ THIẾT BỊ DÒ KHÍ RIKEN VIET').bold = True
     doc.add_paragraph('_' * 60)
     
-    doc.add_heading('1. Phân bổ Không gian 3D Tổng thể', level=1)
+    # --- PHẦN 1: BÁO GIÁ BOM ---
+    doc.add_heading('1. Bảng Bóc tách Khối lượng & Dự toán (BOM)', level=1)
+    table = doc.add_table(rows=1, cols=5)
+    table.style = 'Table Grid'
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'STT'
+    hdr_cells[1].text = 'Hạng mục thiết bị'
+    hdr_cells[2].text = 'Số lượng'
+    hdr_cells[3].text = 'Đơn giá (VNĐ)'
+    hdr_cells[4].text = 'Thành tiền (VNĐ)'
+    
+    total_amount = 0
+    for _, row in bom_df.iterrows():
+        row_cells = table.add_row().cells
+        row_cells[0].text = str(row['STT'])
+        row_cells[1].text = str(row['Hạng mục'])
+        qty = int(row['Số lượng'])
+        price = int(row['Đơn giá (VNĐ)'])
+        amount = qty * price
+        total_amount += amount
+        
+        row_cells[2].text = f"{qty:,}"
+        row_cells[3].text = f"{price:,}"
+        row_cells[4].text = f"{amount:,}"
+        
+    # Hàng TỔNG CỘNG
+    row_cells = table.add_row().cells
+    row_cells[1].text = "TỔNG CỘNG"
+    row_cells[4].text = f"{total_amount:,} VNĐ"
+    for cell in row_cells:
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs: run.font.bold = True
+            
+    doc.add_paragraph() # Khoảng trắng
+    
+    # --- PHẦN 2: BẢN VẼ ---
+    doc.add_heading('2. Phân bổ Không gian 3D Tổng thể', level=1)
     if img_3d_bytes:
         doc.add_picture(img_3d_bytes, width=Inches(6.0))
         doc.add_paragraph('Hình 1: Trực quan hóa hệ thống thiết bị và vật cản 3D.').alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    doc.add_heading('2. Phân tích Điểm mù theo Phân hệ Khí', level=1)
+    doc.add_heading('3. Phân tích Điểm mù theo Phân hệ Khí', level=1)
     for gas_name, fig in figs_dict.items():
         doc.add_heading(f'Bản đồ giám sát: {gas_name}', level=2)
         img_stream = io.BytesIO()
@@ -346,10 +390,10 @@ def generate_word_report(figs_dict, img_3d_bytes):
     return doc_stream
 
 # ==========================================
-# 4. TRIGGER KẾT XUẤT
+# 5. TRIGGER KẾT XUẤT
 # ==========================================
 st.markdown("---")
-if st.button("📊 Chạy Mô phỏng Kiến trúc Phức hợp & Tải Báo cáo", use_container_width=True, type='primary'):
+if st.button("📊 Chạy Mô phỏng Đồ họa & Tải Báo cáo Kỹ thuật", use_container_width=True, type='primary'):
     if room_poly is None or edited_dets.empty:
         st.warning("⚠️ Vui lòng nhập đủ tọa độ phòng và danh sách đầu dò!")
     else:
@@ -361,7 +405,7 @@ if st.button("📊 Chạy Mô phỏng Kiến trúc Phức hợp & Tải Báo cá
                 st.error(f"⛔ LỖI VA CHẠM: Đầu dò **{', '.join(collided)}** đang bị đặt nằm bên trong vật cản! Vui lòng chỉnh lại tọa độ X, Y.")
             else:
                 with st.spinner('Đang dùng thuật toán Nội suy Raycasting và rà soát bóng mờ đa lớp...'):
-                    st.header("3. Phân tích Kết quả Đồ họa")
+                    st.header("4. Phân tích Kết quả Đồ họa")
                     
                     fig_3d = generate_plotly_3d_complex(room_poly, room_z, obs_polys, edited_obs, edited_dets)
                     st.plotly_chart(fig_3d, use_container_width=True)
@@ -387,8 +431,9 @@ if st.button("📊 Chạy Mô phỏng Kiến trúc Phức hợp & Tải Báo cá
                                 st.warning(f"⚠️ Tỷ lệ bao phủ của {gas_name} chỉ đạt: {coverage:.1f}%")
                             generated_figs[gas_name] = fig_2d
                     
-                    word_stream = generate_word_report(generated_figs, img_3d_bytes)
-                    st.download_button("📄 Tải Báo cáo Tư vấn Chuyên sâu (Word)", word_stream, "Bao_Cao_RikenViet.docx", type="primary")
+                    # XUẤT WORD KÈM BẢNG BOM
+                    word_stream = generate_word_report(generated_figs, img_3d_bytes, edited_bom)
+                    st.download_button("📄 Tải Báo cáo Tư vấn Chuyên sâu & Báo Giá (Word)", word_stream, "Bao_Cao_Du_Toan_RikenViet.docx", type="primary")
 
         except Exception as e:
             st.error(f"Lỗi hệ thống: {e}. Vui lòng kiểm tra lại tọa độ đa giác hoặc thông số nhập liệu.")
