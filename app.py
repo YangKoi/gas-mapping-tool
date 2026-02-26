@@ -18,7 +18,7 @@ from matplotlib.path import Path
 # CẤU HÌNH TRANG WEB & STATE
 # ==========================================
 st.set_page_config(page_title="Riken Viet - Enterprise Gas Mapping", layout="wide")
-st.title("🛡️ Riken Viet - Hệ thống Thiết kế & Bóc tách Khối lượng (BOM)")
+st.title("🛡️ Riken Viet - Hệ thống Thiết kế & Mô phỏng vùng phủ khí đa lớp (3D) - Beta")
 
 if 'room_data' not in st.session_state:
     st.session_state.room_data = pd.DataFrame({"X": [0, 15, 15, 0], "Y": [0, 0, 10, 10]}) 
@@ -453,3 +453,4 @@ st.markdown("""
         Designed and programmed by <b>trggiang</b>.
     </div>
 """, unsafe_allow_html=True)
+
