@@ -12,7 +12,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from shapely.geometry import Point, LineString, Polygon
 import shapely.affinity as affinity
 from matplotlib.path import Path
-from streamlit_drawable_canvas import st_canvas # THƯ VIỆN BÚT VẼ
+from streamlit_drawable_canvas import st_canvas
+from PIL import Image, ImageDraw # Thư viện vẽ Lưới nền
 
 # ==========================================
 # CẤU HÌNH TRANG WEB
@@ -35,7 +36,7 @@ if 'det_data' not in st.session_state:
     st.session_state.det_data = pd.DataFrame(columns=["ID", "Gas", "X", "Y", "Z", "Radius", "Color"])
 
 # ==========================================
-# 1. GIAO DIỆN NHẬP LIỆU & BẢNG VẼ TƯƠNG TÁC
+# 1. GIAO DIỆN NHẬP LIỆU & BẢNG VẼ LƯỚI TƯƠNG TÁC
 # ==========================================
 col_input1, col_input2 = st.columns([1.2, 1])
 
@@ -43,56 +44,70 @@ with col_input1:
     st.header("1. Kiến trúc Phòng Không gian")
     room_z = st.number_input("Chiều cao trần (Z) - mét", min_value=1.0, value=5.0)
 
-    # ĐIỂM NÂNG CẤP LỚN: BẢNG VẼ CANVAS
-    st.subheader("🖍️ Bảng vẽ Mặt bằng (Tương tác)")
+    # ==========================================
+    # CÔNG NGHỆ BẢNG VẼ LƯỚI (GRID CANVAS) & AUTO-SNAP
+    # ==========================================
+    st.subheader("🖍️ Bảng vẽ Mặt bằng (Auto-Snap)")
     st.markdown("""
-    **Hướng dẫn sử dụng:** 1. Chọn công cụ vẽ Đa giác (Polygon) ở thanh công cụ bên trái bảng vẽ.
-    2. Click chuột để chấm từng góc của căn phòng (Vẽ theo tỷ lệ: **10 pixel = 1 mét**).
-    3. **Click đúp chuột** (Double-click) ở điểm cuối cùng để khép kín vòng tròn thành căn phòng.
+    **Mẹo vẽ chuẩn xác:** 1. Chọn công cụ vẽ Đa giác (Polygon) bên trái.
+    2. Click để chấm các góc tường. **Mỗi ô vuông trên lưới = 1 mét**.
+    3. Hệ thống sẽ tự động "nắn thẳng" nét vẽ của bạn cho vuông vắn.
+    4. 🚨 **QUAN TRỌNG:** Để khép kín phòng, hãy **Click ĐÚP CHUỘT (Double-click)** ở điểm cuối cùng!
     """)
     
+    # 1. Tự động khởi tạo ảnh nền Lưới (Grid)
+    canvas_w, canvas_h, grid_size = 600, 400, 20 # Quy ước: 20 pixels = 1 mét
+    grid_img = Image.new('RGB', (canvas_w, canvas_h), color='#1E1E1E')
+    draw = ImageDraw.Draw(grid_img)
+    # Kẻ lưới dọc
+    for x in range(0, canvas_w, grid_size): draw.line([(x, 0), (x, canvas_h)], fill='#333333', width=1)
+    # Kẻ lưới ngang
+    for y in range(0, canvas_h, grid_size): draw.line([(0, y), (canvas_w, y)], fill='#333333', width=1)
+    
+    # 2. Render Canvas với nền Lưới
     canvas_result = st_canvas(
-        fill_color="rgba(0, 151, 255, 0.3)",  # Màu nền trong suốt
+        fill_color="rgba(0, 255, 150, 0.3)",  # Xanh lá trong suốt
         stroke_width=3,
-        stroke_color="#FFFFFF", # Viền trắng
-        background_color="#222222", # Nền đen như AutoCAD
-        height=400,
-        width=600,
-        drawing_mode="polygon", # Chế độ vẽ Đa giác
+        stroke_color="#00FFAA",
+        background_image=grid_img, # Chèn ảnh lưới vào làm nền
+        height=canvas_h, width=canvas_w,
+        drawing_mode="polygon",
         key="canvas",
     )
 
-    # ĐỌC DỮ LIỆU TỪ NÉT VẼ ĐỂ CHUYỂN THÀNH TỌA ĐỘ
+    # 3. Thuật toán Auto-Snap (Bắt điểm tự động)
     if canvas_result.json_data is not None:
         objects = canvas_result.json_data["objects"]
         if len(objects) > 0:
-            last_obj = objects[-1] # Lấy hình đa giác vừa vẽ xong
+            last_obj = objects[-1]
             if last_obj["type"] == "polygon":
-                # Tỷ lệ: 10 pixels trên web = 1 mét thực tế
-                scale_factor = 0.1 
                 pts = last_obj["points"]
-                
-                # Tính toán lại gốc tọa độ để đặt góc phòng về (0,0) cho dễ nhìn
                 min_x = min([p["x"] for p in pts])
                 min_y = min([p["y"] for p in pts])
                 
-                # Cập nhật vào bảng Excel tự động
                 drawn_room = []
                 for p in pts:
-                    real_x = round((p["x"] - min_x) * scale_factor, 1)
-                    real_y = round((p["y"] - min_y) * scale_factor, 1)
-                    drawn_room.append({"X": real_x, "Y": real_y})
+                    # Chuyển từ pixel sang mét
+                    real_x = (p["x"] - min_x) / grid_size
+                    real_y = (p["y"] - min_y) / grid_size
+                    
+                    # AUTO-SNAP: Làm tròn đến 0.5m gần nhất để nắn thẳng góc tường
+                    snap_x = round(real_x * 2) / 2
+                    snap_y = round(real_y * 2) / 2
+                    drawn_room.append({"X": snap_x, "Y": snap_y})
                 
-                # Tự động ghi đè dữ liệu vẽ vào bảng
-                st.session_state.room_data = pd.DataFrame(drawn_room)
+                # Loại bỏ các điểm trùng lặp liên tiếp (Do tay run click đúp nhiều lần)
+                df_drawn = pd.DataFrame(drawn_room)
+                df_drawn = df_drawn.loc[(df_drawn.shift() != df_drawn).any(axis=1)].reset_index(drop=True)
+                st.session_state.room_data = df_drawn
 
-    st.caption("👇 Tọa độ được tự động dịch từ nét vẽ của bạn. Bạn có thể sửa lại cho chẵn số (chỉnh tinh):")
+    st.caption("👇 Tọa độ đã được AI 'nắn thẳng' (Auto-Snap) dựa trên nét vẽ của bạn:")
     edited_room = st.data_editor(st.session_state.room_data, num_rows="dynamic", use_container_width=True)
     
     if len(edited_room) >= 3:
         room_poly = Polygon(list(zip(edited_room['X'], edited_room['Y'])))
     else:
-        st.error("Phòng cần ít nhất 3 góc!")
+        st.error("Phòng cần ít nhất 3 góc (tọa độ)!")
         room_poly = None
 
 with col_input2:
@@ -366,7 +381,7 @@ if st.button("📊 Chạy Mô phỏng Kiến trúc Phức hợp & Tải Báo cá
                     st.download_button("📄 Tải Báo cáo Tư vấn Chuyên sâu (Word)", word_stream, "Bao_Cao_RikenViet.docx", type="primary")
 
         except Exception as e:
-            st.error(f"Lỗi hệ thống: {e}. Vui lòng kiểm tra lại tọa độ đa giác hoặc thông số nhập liệu.")
+            st.error(f"Lỗi hệ thống: {e}. Vui lòng kiểm tra lại nét vẽ hoặc thông số nhập liệu.")
 
 # ==========================================
 # 5. FOOTER (BẢN QUYỀN TÁC GIẢ)
