@@ -171,7 +171,7 @@ col_info1, col_info2, col_info3 = st.columns([1, 1, 1])
 
 with col_info1:
     project_name = st.text_input("Tên Dự án / Gói thầu", value="Thiết kế Hệ thống Giám sát Rò rỉ Khí")
-    author_name = st.text_input("Người lập báo cáo", value="Cao Minh Lợi - Giám đốc Kỹ thuật")
+    author_name = st.text_input("Người lập báo cáo", value="Nguyễn Đình Trường Giang")
 with col_info2:
     client_name = st.text_input("Đơn vị / Khách hàng", value="Nhà máy ABC")
     report_date = st.date_input("Ngày lập báo cáo")
