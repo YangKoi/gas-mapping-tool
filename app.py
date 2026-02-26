@@ -440,7 +440,7 @@ if st.button("📊 Chạy Mô phỏng Đồ họa & Tải Báo cáo Kỹ thuật
                             generated_figs[gas_name] = {'fig': fig_2d, 'coverage': coverage}
                     
                     # Gọi hàm với tham số số báo cáo
-                    word_stream = generate_word_template("Mau_Bao_Cao.docx", generated_figs, img_3d_bytes, edited_bom, project_name, client_name, author_name, report_date, report_number)
+                    word_stream = generate_word_template("RKV_Baocao.docx", generated_figs, img_3d_bytes, edited_bom, project_name, client_name, author_name, report_date, report_number)
                     st.download_button("📄 Tải Báo cáo chuẩn Form Công ty", word_stream, f"{report_number.replace('/','_')}_{client_name}.docx", type="primary")
 
         except Exception as e:
@@ -453,3 +453,4 @@ st.markdown("""
         Designed and programmed by <b>trggiang</b>.
     </div>
 """, unsafe_allow_html=True)
+
