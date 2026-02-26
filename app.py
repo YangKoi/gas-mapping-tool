@@ -400,8 +400,8 @@ def generate_word_template(template_path, figs_dict, img_3d_bytes, bom_df, p_nam
 # ==========================================
 st.markdown("---")
 if st.button("📊 Chạy Mô phỏng Đồ họa & Tải Báo cáo Kỹ thuật", use_container_width=True, type='primary'):
-    if not os.path.exists("Mau_Bao_Cao.docx"):
-        st.error("🚨 Lỗi: Hệ thống không tìm thấy file `Mau_Bao_Cao.docx`. Vui lòng tạo file mẫu và tải lên kho GitHub của bạn trước khi xuất báo cáo!")
+    if not os.path.exists("RKV_Baocao.docx"):
+        st.error("🚨 Lỗi: Hệ thống không tìm thấy file `RKV_Baocao.docx`. Vui lòng tạo file mẫu và tải lên kho GitHub của bạn trước khi xuất báo cáo!")
     elif room_poly is None or edited_dets.empty:
         st.warning("⚠️ Vui lòng nhập đủ tọa độ phòng và danh sách đầu dò!")
     else:
@@ -453,4 +453,5 @@ st.markdown("""
         Designed and programmed by <b>trggiang</b>.
     </div>
 """, unsafe_allow_html=True)
+
 
